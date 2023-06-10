@@ -24,6 +24,7 @@ func (s *Serve) Init(port int, _conn *pg.DB) {
 	r.HandleFunc("/health", health).Methods("GET", "OPTIONS")
 	r.HandleFunc("/license/{id}", getLicense).Methods("GET")
 	r.HandleFunc("/webhook", handleWebhook).Methods("POST")
+	r.HandleFunc("/trial-register", handleTrialRegister).Methods("POST", "OPTIONS")
 
 	// Paywalled filter routes.
 	filterR := r.PathPrefix("/filter").Subrouter()

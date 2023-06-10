@@ -83,6 +83,7 @@ func filterImages(uris []string, fs FilterSettings) ([]*ImgFilterRes, error) {
 				Reason: "",
 			}
 		} else {
+			logger.Debug().Msgf("Printing results for image: %s", uri)
 			isSafe, reason := isImgSafe(annotateRes, fs)
 			if reason != "" {
 				logger.Debug().Msgf("Image %s failed the filter because it had %s content", uri, reason)
@@ -224,7 +225,9 @@ func isImgSafe(air *pb.AnnotateImageResponse, fs FilterSettings) (isSafe bool, r
 		}
 	}
 
-	if fs.Adult && ssa.Adult >= pb.Likelihood_LIKELY {
+	logger.Debug().Msgf("adult: %d, medical: %d, violence: %d, racy: %d", ssa.Adult, ssa.Medical, ssa.Violence, ssa.Racy)
+
+	if fs.Adult && ssa.Adult >= pb.Likelihood_POSSIBLE {
 		return false, "adult"
 	}
 
@@ -239,7 +242,7 @@ func isImgSafe(air *pb.AnnotateImageResponse, fs FilterSettings) (isSafe bool, r
 	// Set this to "very likely" because anything less strict
 	// was filtering out cartoons that I did not personally deem
 	// to be innapropriate or "racy".
-	if fs.Racy && ssa.Racy >= pb.Likelihood_VERY_LIKELY {
+	if fs.Racy && ssa.Racy > pb.Likelihood_POSSIBLE {
 		return false, "racy"
 	}
 

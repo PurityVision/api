@@ -54,6 +54,18 @@ func (store *PGStore) UpdateLicense(license *License) error {
 	return err
 }
 
+func (store *PGStore) GetLicenseByEmail(email string) (*License, error) {
+	license := new(License)
+	err := store.db.Model(license).Where("email = ?", email).Select()
+	if err != nil {
+		if err == pg.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return license, nil
+}
+
 var pgStore *PGStore
 
 var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()

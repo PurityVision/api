@@ -21,31 +21,28 @@ func health(w http.ResponseWriter, req *http.Request) {
 }
 
 func handleFilter(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case "POST":
-		var filterReq ImgFilterReq
+	var filterReq ImgFilterReq
 
-		decoder := json.NewDecoder(req.Body)
-		if err := decoder.Decode(&filterReq); err != nil {
-			writeError(400, "JSON body missing or malformed", w)
-			return
-		}
-
-		if _, err := url.ParseRequestURI(filterReq.ImgURI); err != nil {
-			writeError(400, fmt.Sprintf("%s is not a valid URI\n", filterReq.ImgURI), w)
-			return
-		}
-
-		logger.Info().Msg(filterReq.ImgURI)
-		res, err := filterSingle(filterReq.ImgURI, filterReq.FilterSettings)
-		if err != nil {
-			writeError(500, "Something went wrong", w)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(res)
+	decoder := json.NewDecoder(req.Body)
+	if err := decoder.Decode(&filterReq); err != nil {
+		writeError(400, "JSON body missing or malformed", w)
+		return
 	}
+
+	if _, err := url.ParseRequestURI(filterReq.ImgURI); err != nil {
+		writeError(400, fmt.Sprintf("%s is not a valid URI\n", filterReq.ImgURI), w)
+		return
+	}
+
+	logger.Info().Msg(filterReq.ImgURI)
+	res, err := filterSingle(filterReq.ImgURI, filterReq.FilterSettings)
+	if err != nil {
+		writeError(500, "Something went wrong", w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
 }
 
 const MAX_IMAGES_PER_REQUEST = 16
@@ -67,8 +64,6 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 
 		var res BatchImgFilterRes
 
-		// log.Debug().Msgf("Filtering: %v", filterReqPayload.ImgURIList)
-
 		// Validate the request payload URIs
 		for _, uri := range filterReqPayload.ImgURIList {
 			if _, err := url.ParseRequestURI(uri); err != nil {
@@ -77,6 +72,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 			}
 		}
 
+		// Filter images in pages of size MAX_IMAGES_PER_REQUEST.
 		for i := 0; i < len(filterReqPayload.ImgURIList); {
 			var endIdx int
 			if i+MAX_IMAGES_PER_REQUEST > len(filterReqPayload.ImgURIList)-1 {
@@ -252,12 +248,77 @@ func getLicense(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if license == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "License %s was not found", licenseID)
-		return
-	}
+	// if license == nil {
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	fmt.Fprintf(w, "License %s was not found", licenseID)
+	// 	return
+	// }
 
 	json.NewEncoder(w).Encode(license)
 	w.WriteHeader(http.StatusOK)
+}
+
+type TrialRegisterReq struct {
+	Email string
+}
+
+func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
+	var trialReq TrialRegisterReq
+
+	decoder := json.NewDecoder(req.Body)
+	if err := decoder.Decode(&trialReq); err != nil {
+		writeError(400, "JSON body missing or malformed", w)
+		return
+	}
+
+	if trialReq.Email == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Email cannot be empty")
+		return
+	}
+
+	license, err := pgStore.GetLicenseByEmail(trialReq.Email)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if license != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Email is already registered")
+		return
+	}
+
+	if err = RegisterNewUser(trialReq.Email); err != nil {
+		logger.Debug().Msgf("Something went wrong registering a new user: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func RegisterNewUser(email string) error {
+	licenseID := utils.GenerateLicenseKey()
+	logger.Debug().Msgf("Generated license: %s\n", licenseID)
+
+	license := &License{
+		ID:       licenseID,
+		Email:    email,
+		StripeID: "trial",
+		IsValid:  true,
+	}
+
+	if _, err := conn.Model(license).Insert(); err != nil {
+		logger.Debug().Msgf("Error creating: %v\n", err)
+		return err
+	}
+
+	if err := mail.SendLicenseMail(license.Email, license.ID); err != nil {
+		// TODO: retry sending email so user can get their license.
+		logger.Debug().Msgf("Error sending license email: %v\n", err)
+		return err
+	}
+
+	return nil
 }
