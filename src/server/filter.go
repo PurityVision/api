@@ -79,7 +79,7 @@ func filterImages(uris []string, fs FilterSettings) ([]*ImgFilterRes, error) {
 			filterRes = &ImgFilterRes{
 				ImgURI: uri,
 				Error:  fmt.Sprintf("Failed to annotate image: %s with error: %s", uri, annotateRes.Error),
-				Pass:   false,
+				Pass:   true,
 				Reason: "",
 			}
 		} else {
@@ -144,7 +144,7 @@ func filterSingle(uri string, fs FilterSettings) (*ImgFilterRes, error) {
 		res = &ImgFilterRes{
 			ImgURI: uri,
 			Error:  fmt.Sprintf("Failed to annotate image: %s with error: %s", uri, imgAnnotation.Error),
-			Pass:   false,
+			Pass:   true,
 			Reason: "",
 		}
 	} else {
