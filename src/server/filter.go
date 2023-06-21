@@ -126,15 +126,6 @@ func filterSingle(uri string, fs FilterSettings) (*ImgFilterRes, error) {
 		}, nil
 	}
 
-	// otherwise download file
-	// path, hash, err := fetchAndReadFile(uri)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer os.Remove(path)
-
-	// Make filter request to Google Vision API.
-	// imgAnnotation, err := vision.GetImgAnnotation(path)
 	imgAnnotation, err := vision.GetImgAnnotation(uri)
 	if err != nil {
 		return nil, err

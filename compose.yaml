@@ -1,10 +1,14 @@
 version: "3.7"
+name: purity-vision
 secrets:
   google_credentials:
     file: ${GOOGLE_APPLICATION_CREDENTIALS}
 services:
   web:
-    image: purity-vision:latest
+    # image: purity-vision:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       - postgres
     links:
@@ -35,5 +39,5 @@ services:
       - POSTGRES_PASSWORD=${PURITY_DB_PASS}
     volumes:
       # - "/pg-docker-data:/var/lib/postgresql/data"
-      - "/Users/gb/Desktop/pg-data:/var/lib/postgresql/data"
+      - "${PROJECT_ROOT}/pg-data:/var/lib/postgresql/data"
       - "${PROJECT_ROOT}/build:/docker-entrypoint-initdb.d"

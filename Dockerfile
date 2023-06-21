@@ -1,17 +1,23 @@
-FROM golang:latest AS build
+# Stage 1: Build
+FROM golang:1.16 AS build
 
 WORKDIR /go/src/purity-vision
 COPY . .
 
-RUN go get -d -v ./...
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o purity-vision .
 
-# Add new stage to cache Go dependency download.
-FROM build
+# RUN GOOS=linux GOARCH=amd64 go build -o purity-vision .
 
-RUN go install -v ./...
+# Stage 2: Runtime
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates bash
 
-ENV PURITY_DB_HOST=postgres
+WORKDIR /root/
+COPY --from=build /go/src/purity-vision/purity-vision .
+# ENV PURITY_DB_HOST=postgres
 
 EXPOSE 8080
 
-CMD ["purity-vision", "-port", "8080"]
+
+CMD ["./purity-vision", "-port", "8080"]

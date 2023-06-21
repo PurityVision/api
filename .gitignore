@@ -5,3 +5,6 @@ purity-vision
 *~
 *#*#
 .envrc
+pg-data/
+secrets/
+config/.env.prod
