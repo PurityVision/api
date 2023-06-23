@@ -33,7 +33,7 @@ The required environment variables are listed in the `.envrc` file in the projec
 
 With golang installed and Docker running, start the the database with the `start-db.sh` script.
 ```bash
-./start-db.sh
+./scripts/start-db.sh
 ```
 
 ### API Server

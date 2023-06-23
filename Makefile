@@ -9,7 +9,7 @@ docker-run: $(TARGET)
 	docker compose up --detach
 
 run: $(TARGET)
-	./start-db.sh
+	./scripts/start-db.sh
 	./${TARGET}
 
 $(TARGET): $(SOURCES) Dockerfile .envrc

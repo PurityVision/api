@@ -5,7 +5,7 @@ secrets:
     file: ${GOOGLE_APPLICATION_CREDENTIALS}
 services:
   web:
-    # image: purity-vision:latest
+    image: purity-vision:latest
     build:
       context: .
       dockerfile: Dockerfile
