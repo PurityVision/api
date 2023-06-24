@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"purity-vision-filter/src/images"
 	"purity-vision-filter/src/mail"
 	"purity-vision-filter/src/utils"
 
@@ -20,36 +21,11 @@ func health(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("All Good ☮️"))
 }
 
-func handleFilter(w http.ResponseWriter, req *http.Request) {
-	var filterReq ImgFilterReq
-
-	decoder := json.NewDecoder(req.Body)
-	if err := decoder.Decode(&filterReq); err != nil {
-		writeError(400, "JSON body missing or malformed", w)
-		return
-	}
-
-	if _, err := url.ParseRequestURI(filterReq.ImgURI); err != nil {
-		writeError(400, fmt.Sprintf("%s is not a valid URI\n", filterReq.ImgURI), w)
-		return
-	}
-
-	logger.Info().Msg(filterReq.ImgURI)
-	res, err := filterSingle(filterReq.ImgURI, filterReq.FilterSettings)
-	if err != nil {
-		writeError(500, "Something went wrong", w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
-}
-
 const MAX_IMAGES_PER_REQUEST = 16
 
 func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
-		var filterReqPayload BatchImgFilterReq
+		var filterReqPayload AnnotateReq
 
 		decoder := json.NewDecoder(req.Body)
 		if err := decoder.Decode(&filterReqPayload); err != nil {
@@ -62,7 +38,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 			return
 		}
 
-		var res BatchImgFilterRes
+		var res []*images.ImageAnnotation
 
 		// Validate the request payload URIs
 		for _, uri := range filterReqPayload.ImgURIList {
@@ -81,10 +57,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 				endIdx = i + MAX_IMAGES_PER_REQUEST
 			}
 
-			temp, err := filterImages(
-				filterReqPayload.ImgURIList[i:endIdx],
-				filterReqPayload.FilterSettings,
-			)
+			temp, err := filterImages(filterReqPayload.ImgURIList[i:endIdx])
 			if err != nil {
 				logger.Error().Msgf("Error while filtering: %s\n", err)
 				w.WriteHeader(http.StatusInternalServerError)

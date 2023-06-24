@@ -86,12 +86,12 @@ func TestBatchImgFilterHandler(t *testing.T) {
 	s.Init(conn)
 	uri := "https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg"
 
-	fr := BatchImgFilterReq{
+	req := AnnotateReq{
 		ImgURIList: []string{},
 	}
 
 	var errRes ErrorRes
-	res, err := testBatchImgFilterHandler(fr)
+	res, err := testBatchImgFilterHandler(req)
 	if err != nil {
 		t.Error("Shouldn't have thrown an error")
 	}
@@ -105,20 +105,20 @@ func TestBatchImgFilterHandler(t *testing.T) {
 		t.Error("Web server should have returned a 400 because the ImgURIList was empty")
 	}
 
-	fr = BatchImgFilterReq{
+	req = AnnotateReq{
 		ImgURIList: []string{uri},
 	}
 
-	res, err = testBatchImgFilterHandler(fr)
+	res, err = testBatchImgFilterHandler(req)
 	if err != nil {
 		t.Error(err)
 	}
 	if res.Code != 200 {
 		t.Error("Web server should have returned a 200")
 	}
-	var fRes BatchImgFilterRes
-	json.Unmarshal(res.Body.Bytes(), &fRes)
-	if len(fRes) != 1 || fRes[0].Pass != true {
+	var annotation []*images.ImageAnnotation
+	json.Unmarshal(res.Body.Bytes(), &annotation)
+	if len(annotation) != 1 {
 		t.Error("Handler didn't return the right results")
 	}
 
@@ -128,8 +128,7 @@ func TestBatchImgFilterHandler(t *testing.T) {
 	}
 }
 
-// TODO rename to something more descriptive
-func testBatchImgFilterHandler(fr BatchImgFilterReq) (*httptest.ResponseRecorder, error) {
+func testBatchImgFilterHandler(fr AnnotateReq) (*httptest.ResponseRecorder, error) {
 	b, err := json.Marshal(fr)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to marshal request body struct")

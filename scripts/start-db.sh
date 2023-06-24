@@ -2,15 +2,20 @@
 
 db_name="purity-pg"
 
+if [[ -z ${PROJECT_ROOT} ]]; then
+	echo "PROJECT_ROOT variable must be set. Exiting."
+	exit 1
+fi
+
 if [[ -z $(docker ps --filter=name=purity-pg -q) ]]; then
     echo "Starting database container"
     container=$(docker run --name ${db_name} \
 	   -p "${PURITY_DB_PORT}":5432 \
 	   -e POSTGRES_DB="${PURITY_DB_NAME}" \
 	   -e POSTGRES_PASSWORD="${PURITY_DB_PASS}" \
-	   -v /pg-docker-data:/var/lib/postgresql/data \
+	   -v ${PROJECT_ROOT}/pg-data:/var/lib/postgresql/data \
 	   -v "${PROJECT_ROOT}/build":/docker-entrypoint-initdb.d \
-	   --rm \
+		 --rm \
 	   --detach \
 	   postgres)
 else

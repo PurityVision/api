@@ -33,44 +33,21 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func TestNewImage(t *testing.T) {
-	uri := "https://google.com"
-	time := time.Now()
-	fakeHash := utils.Hash("some string")
-	expected := Image{
-		fakeHash,
-		uri,
-		sql.NullString{},
-		true,
-		"",
-		time,
-	}
-	img, err := NewImage(fakeHash, uri, nil, true, "", time)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if (expected.Hash != img.Hash) ||
-		(expected.Error != img.Error) ||
-		(expected.Pass != img.Pass) ||
-		(expected.DateAdded != img.DateAdded) {
-		t.Fatalf("Expected %v to equal %v", expected, img)
-	}
-
-	_, err = NewImage(fakeHash, uri, nil, false, "", time)
-	if err == nil {
-		t.Fatal("Expected NewImage to throw error if pass is false and error and reason are empty")
-	}
-}
-
 func TestInsertImage(t *testing.T) {
 	for _, uri := range imgURIList {
 		fakeHash := utils.Hash(uri)
-		img, err := NewImage(fakeHash, uri, nil, true, "", time.Now())
-		if err != nil {
-			t.Fatal(err)
+		anno := &ImageAnnotation{
+			Hash:      fakeHash,
+			URI:       uri,
+			Error:     sql.NullString{},
+			DateAdded: time.Now(),
+			Adult:     0,
+			Spoof:     0,
+			Medical:   0,
+			Violence:  0,
+			Racy:      0,
 		}
-		err = Insert(conn, img)
+		err = Insert(conn, anno)
 		if err != nil {
 			t.Fatal(err.Error())
 		}
@@ -80,7 +57,7 @@ func TestInsertImage(t *testing.T) {
 func TestFindImagesByURI(t *testing.T) {
 	smallURIList := imgURIList[:1]
 
-	imgList, err := FindAllByURI(conn, smallURIList)
+	imgList, err := FindAnnotationsByURI(conn, smallURIList)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -91,7 +68,7 @@ func TestFindImagesByURI(t *testing.T) {
 	}
 
 	smallURIList = []string{}
-	imgList, err = FindAllByURI(conn, smallURIList)
+	imgList, err = FindAnnotationsByURI(conn, smallURIList)
 	if err == nil {
 		t.Fatal("Expected FindImagesByURI to return an error because imgURIList cannot be empty")
 	}

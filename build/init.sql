@@ -13,18 +13,25 @@ ALTER TABLE public.users
 ALTER TABLE public.users
     ALTER COLUMN uid ADD GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 );
 
-CREATE TABLE public.images
+CREATE TABLE public.image_annotations
 (
     hash text NOT NULL, -- Hash of the b64 content encoding.
     uri text NOT NULL,
     error text,
-    pass boolean NOT NULL default false,
-    reason text,
     date_added timestamp NOT NULL default CURRENT_TIMESTAMP,
+
+    -- properties from Google's SafeSearchAnnotation type 
+    adult smallint default 0,
+    spoof smallint default 0,
+    medical smallint default 0,
+    violence smallint default 0,
+    racy smallint default 0,
+    -- end properties
+
     PRIMARY KEY (hash, uri)
 );
 
-ALTER TABLE public.images
+ALTER TABLE public.image_annotations
     OWNER to postgres;
 
 create table public.licenses

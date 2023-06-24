@@ -70,34 +70,11 @@ var pgStore *PGStore
 
 var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
-// BatchImgFilterReq is the form of an incoming JSON payload
+// AnnotateReq is the form of an incoming JSON payload
 // for retrieving pass/fail status of each supplied image URI.
-type BatchImgFilterReq struct {
-	ImgURIList     []string `json:"imgURIList"`
-	FilterSettings `json:"filterSettings"`
+type AnnotateReq struct {
+	ImgURIList []string `json:"imgURIList"`
 }
-
-type ImgFilterReq struct {
-	ImgURI         string `json:"imgURI"`
-	FilterSettings `json:"filterSettings"`
-}
-
-// ImgFilterRes returns the pass/fail status and any errors for a single image URI.
-//
-// TODO: consider adding 'URI' as a key. Currently, we are taking advantage of the fact
-// that the JSON RFC guarantees array ordering. Comment in the below link suggests that
-// there are known cases where order is not guaranteed.
-// https://stackoverflow.com/a/7214312
-type ImgFilterRes struct {
-	ImgURI string `json:"imgURI"` // The original URI where the image resides on the web.
-	Error  string `json:"error"`  // Any error returned when trying to filter the image.
-	Pass   bool   `json:"pass"`   // True if the image passed the filter.
-	Reason string `json:"reason"` // Why the image did not pass the filter if non-empty e.g. "adult", "violence", etc.
-}
-
-// BatchImgFilterRes represents a list of pass/fail statuses and any errors for each
-// supplied image URI.
-type BatchImgFilterRes []*ImgFilterRes
 
 // ErrorRes is a JSON response containing an error message from the API.
 type ErrorRes struct {

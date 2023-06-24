@@ -2,7 +2,6 @@ package vision
 
 import (
 	"context"
-	"log"
 	"os"
 
 	vision "cloud.google.com/go/vision/apiv1"
@@ -77,43 +76,6 @@ func GetImgAnnotation(uri string) (*pb.AnnotateImageResponse, error) {
 	}
 
 	return res, nil
-}
-
-func passSafeSearch(file string) error {
-	// [START init]
-	ctx := context.Background()
-
-	// Create the client.
-	client, err := vision.NewImageAnnotatorClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	// [END init]
-
-	// [START request]
-	// Open the file.
-	f, err := os.Open(file)
-	if err != nil {
-		return err
-	}
-
-	image, err := vision.NewImageFromReader(f)
-	if err != nil {
-		return err
-	}
-
-	res, err := client.AnnotateImage(ctx, &pb.AnnotateImageRequest{
-		Image: image,
-		Features: []*pb.Feature{
-			{Type: pb.Feature_SAFE_SEARCH_DETECTION, MaxResults: 5},
-		},
-	})
-	if err != nil {
-		return err
-	}
-	log.Println(res)
-	return nil
 }
 
 // findLabels gets labels from the Vision API for an image at the given file path.
