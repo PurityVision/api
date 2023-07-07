@@ -75,7 +75,7 @@ func testHealthJunkBody(t *testing.T) {
 	}
 }
 
-func TestBatchImgFilterHandler(t *testing.T) {
+func TestFilterEmpty(t *testing.T) {
 	conn, err := db.Init(config.DefaultDBTestName)
 	if err != nil {
 		log.Fatal(err)
@@ -105,14 +105,81 @@ func TestBatchImgFilterHandler(t *testing.T) {
 		t.Error("Web server should have returned a 400 because the ImgURIList was empty")
 	}
 
-	req = AnnotateReq{
-		ImgURIList: []string{uri},
+	// Delete the img from the DB.
+	if err = images.DeleteByURI(conn, uri); err != nil {
+		t.Log(err)
+	}
+}
+
+func TestFilter(t *testing.T) {
+
+	conn, err := db.Init(config.DefaultDBTestName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	s := TestServe{}
+	s.Init(conn)
+
+	req := AnnotateReq{
+		ImgURIList: []string{
+			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+			"https://i.redd.it/23tzr9qimgf51.png",
+			"https://www.pandesiaworld.com/wp-content/uploads/2019/11/Adina-Barbu-8.jpg",
+			"https://www.captainmitchs.com/wp-content/uploads/2018/01/wood-duck-PFYHVZN.jpg",
+			"https://titis.org/uploads/posts/2022-12/thumbs/1671427956_titis-org-p-nude-girls-forest-chastnaya-erotika-6.jpg",
+			"https://i.imgur.com/5JdV3Uo.jpg",
+		},
 	}
 
-	res, err = testBatchImgFilterHandler(req)
+	res, err := testBatchImgFilterHandler(req)
 	if err != nil {
 		t.Error(err)
 	}
+	if res.Code != 200 {
+		t.Error("Web server should have returned a 200")
+	}
+	var annotation []*images.ImageAnnotation
+	json.Unmarshal(res.Body.Bytes(), &annotation)
+	if len(annotation) != len(req.ImgURIList) {
+		t.Error("Handler didn't return the right results")
+	}
+
+	// Cleanup DB
+	for _, uri := range req.ImgURIList {
+		if err = images.DeleteByURI(conn, uri); err != nil {
+			t.Log(err)
+		}
+	}
+}
+
+func TestFilterDuplicates(t *testing.T) {
+	conn, err := db.Init(config.DefaultDBTestName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	s := TestServe{}
+	s.Init(conn)
+	uri := "https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg"
+
+	req := AnnotateReq{
+		ImgURIList: []string{
+			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+		},
+	}
+
+	//var errRes ErrorRes
+	res, err := testBatchImgFilterHandler(req)
+	if err != nil {
+		t.Error("Shouldn't have thrown an error")
+	}
+
 	if res.Code != 200 {
 		t.Error("Web server should have returned a 200")
 	}
