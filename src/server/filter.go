@@ -53,6 +53,7 @@ func filterImages(uris []string) ([]*images.ImageAnnotation, error) {
 		res = append(res, annotation)
 		err = cacheAnnotation(annotation)
 		if err != nil {
+			logger.Debug().Msgf("Failed to cache with uris: %v", uris)
 			return nil, err
 		}
 	}

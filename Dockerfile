@@ -15,7 +15,6 @@ RUN apk --no-cache add ca-certificates bash
 
 WORKDIR /root/
 COPY --from=build /go/src/purity-vision/purity-vision .
-# ENV PURITY_DB_HOST=postgres
 
 EXPOSE 8080
 

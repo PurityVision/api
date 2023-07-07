@@ -23,6 +23,23 @@ func health(w http.ResponseWriter, req *http.Request) {
 
 const MAX_IMAGES_PER_REQUEST = 16
 
+func removeDuplicates(vals []string) []string {
+	res := make([]string, 0)
+	strMap := make(map[string]bool, 0)
+
+	for _, v := range vals {
+		if found := strMap[v]; found == true {
+			logger.Debug().Msgf("Found duplicate image: %s in request. Removing.", v)
+			continue
+		}
+		res = append(res, v)
+		strMap[v] = true
+
+	}
+
+	return res
+}
+
 func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var filterReqPayload AnnotateReq
@@ -40,8 +57,10 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 
 		var res []*images.ImageAnnotation
 
+		uris := removeDuplicates(filterReqPayload.ImgURIList)
+
 		// Validate the request payload URIs
-		for _, uri := range filterReqPayload.ImgURIList {
+		for _, uri := range uris {
 			if _, err := url.ParseRequestURI(uri); err != nil {
 				writeError(400, fmt.Sprintf("%s is not a valid URI\n", uri), w)
 				return
@@ -49,15 +68,15 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 		}
 
 		// Filter images in pages of size MAX_IMAGES_PER_REQUEST.
-		for i := 0; i < len(filterReqPayload.ImgURIList); {
+		for i := 0; i < len(uris); {
 			var endIdx int
-			if i+MAX_IMAGES_PER_REQUEST > len(filterReqPayload.ImgURIList)-1 {
-				endIdx = len(filterReqPayload.ImgURIList)
+			if i+MAX_IMAGES_PER_REQUEST > len(uris)-1 {
+				endIdx = len(uris)
 			} else {
 				endIdx = i + MAX_IMAGES_PER_REQUEST
 			}
 
-			temp, err := filterImages(filterReqPayload.ImgURIList[i:endIdx])
+			temp, err := filterImages(uris[i:endIdx])
 			if err != nil {
 				logger.Error().Msgf("Error while filtering: %s\n", err)
 				w.WriteHeader(http.StatusInternalServerError)

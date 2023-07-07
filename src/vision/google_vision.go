@@ -2,18 +2,38 @@ package vision
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	vision "cloud.google.com/go/vision/apiv1"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
 type BatchAnnotateResponse map[string]*pb.AnnotateImageResponse
 
+func GetAnnoClient(ctx context.Context) (*vision.ImageAnnotatorClient, error) {
+	fmt.Printf("Google Credentials from env: %s\n", os.Getenv("GOOGLE_CREDENTIALS"))
+	jwtConfig, err := google.JWTConfigFromJSON([]byte(os.Getenv("GOOGLE_CREDENTIALS")), vision.DefaultAuthScopes()...)
+	if err != nil {
+		fmt.Printf("JWTConfigFromJSON failed: %v", err)
+		return nil, err
+	}
+
+	// Create a new Vision client using the JWT config
+	client, err := vision.NewImageAnnotatorClient(ctx, option.WithTokenSource(jwtConfig.TokenSource(ctx)))
+	if err != nil {
+		fmt.Printf("NewImageAnnotatorClient: %v", err)
+		return nil, err
+	}
+
+	return client, nil
+}
+
 func BatchGetImgAnnotation(uris []string) (*pb.BatchAnnotateImagesResponse, error) {
 	ctx := context.Background()
-
-	client, err := vision.NewImageAnnotatorClient(ctx)
+	client, err := GetAnnoClient(ctx)
 	if err != nil {
 		return nil, err
 	}

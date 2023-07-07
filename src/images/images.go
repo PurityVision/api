@@ -12,9 +12,9 @@ type ImageAnnotation struct {
 	DateAdded time.Time      `json:"dateAdded"`
 
 	// from SafeSearchAnnotation fields
-	Adult    int16
-	Spoof    int16
-	Medical  int16
-	Violence int16
-	Racy     int16
+	Adult    int16 `json:"adult"`
+	Spoof    int16 `json:"spoof"`
+	Medical  int16 `json:"medical"`
+	Violence int16 `json:"violence"`
+	Racy     int16 `json:"racy"`
 }
