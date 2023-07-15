@@ -75,6 +75,17 @@ func testHealthJunkBody(t *testing.T) {
 	}
 }
 
+const testURIServerAddr = ":8181"
+const testURIServerURL = "http://localhost:8181"
+
+func getTestServer() *http.Server {
+	http.Handle("/", http.FileServer(http.Dir("../../fixtures")))
+
+	return &http.Server{
+		Addr: testURIServerAddr,
+	}
+}
+
 func TestFilterEmpty(t *testing.T) {
 	conn, err := db.Init(config.DefaultDBTestName)
 	if err != nil {
@@ -84,9 +95,8 @@ func TestFilterEmpty(t *testing.T) {
 
 	s := TestServe{}
 	s.Init(conn)
-	uri := "https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg"
 
-	req := AnnotateReq{
+	req := &AnnotateReq{
 		ImgURIList: []string{},
 	}
 
@@ -104,14 +114,13 @@ func TestFilterEmpty(t *testing.T) {
 	if res.Code != 400 || errRes.Message != "ImgUriList cannot be empty" {
 		t.Error("Web server should have returned a 400 because the ImgURIList was empty")
 	}
-
-	// Delete the img from the DB.
-	if err = images.DeleteByURI(conn, uri); err != nil {
-		t.Log(err)
-	}
 }
 
 func TestFilter(t *testing.T) {
+	// init local fileserver
+	fs := getTestServer()
+
+	defer fs.Close()
 
 	conn, err := db.Init(config.DefaultDBTestName)
 	if err != nil {
@@ -122,14 +131,11 @@ func TestFilter(t *testing.T) {
 	s := TestServe{}
 	s.Init(conn)
 
-	req := AnnotateReq{
+	req := &AnnotateReq{
 		ImgURIList: []string{
-			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
-			"https://i.redd.it/23tzr9qimgf51.png",
-			"https://www.pandesiaworld.com/wp-content/uploads/2019/11/Adina-Barbu-8.jpg",
-			"https://www.captainmitchs.com/wp-content/uploads/2018/01/wood-duck-PFYHVZN.jpg",
-			"https://titis.org/uploads/posts/2022-12/thumbs/1671427956_titis-org-p-nude-girls-forest-chastnaya-erotika-6.jpg",
-			"https://i.imgur.com/5JdV3Uo.jpg",
+			"http://localhost:8181/image-1.jpg",
+			"http://localhost:8181/image-2.jpg",
+			"http://localhost:8181/image-3.jpg",
 		},
 	}
 
@@ -163,14 +169,14 @@ func TestFilterDuplicates(t *testing.T) {
 
 	s := TestServe{}
 	s.Init(conn)
-	uri := "https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg"
+	uri := "localhost:8181/image-1.jpg"
 
-	req := AnnotateReq{
+	req := &AnnotateReq{
 		ImgURIList: []string{
-			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
-			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
-			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
-			"https://i.ytimg.com/vi/19VZZpzbh6s/maxresdefault.jpg",
+			"localhost:8181/image-1.jpg",
+			"localhost:8181/image-1.jpg",
+			"localhost:8181/image-1.jpg",
+			"localhost:8181/image-1.jpg",
 		},
 	}
 
@@ -195,7 +201,7 @@ func TestFilterDuplicates(t *testing.T) {
 	}
 }
 
-func testBatchImgFilterHandler(fr AnnotateReq) (*httptest.ResponseRecorder, error) {
+func testBatchImgFilterHandler(fr *AnnotateReq) (*httptest.ResponseRecorder, error) {
 	b, err := json.Marshal(fr)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to marshal request body struct")
