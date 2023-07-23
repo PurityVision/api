@@ -1,33 +1,51 @@
 package server
 
 import (
+	"errors"
 	"net/http"
+	"purity-vision-filter/src/license"
 
 	"github.com/google/uuid"
 )
 
-type LicenseStore interface {
-	GetLicenseByID(id string) (*License, error)
-	GetLicenseByStripeID(id string) (*License, error)
-	UpdateLicense(license *License) error
+func getLicenseFromReq(ls license.LicenseStore, r *http.Request) (*license.License, error) {
+	licenseID := r.Header.Get("LicenseID")
+
+	_, err := uuid.Parse(licenseID)
+	if err != nil {
+		return nil, errors.New("invalid license ID")
+	}
+
+	license, err := ls.GetLicenseByID(licenseID)
+	if err != nil || license == nil {
+		return nil, errors.New("invalid license")
+	}
+
+	return license, nil
 }
 
-func paywallMiddleware(licenseStore LicenseStore) func(next http.Handler) http.Handler {
+func paywallMiddleware(ls license.LicenseStore) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			licenseID := r.Header.Get("LicenseID")
-
-			_, err := uuid.Parse(licenseID)
+			license, err := getLicenseFromReq(ls, r)
 			if err != nil {
-				http.Error(w, "Invalid license ID", http.StatusUnauthorized)
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
-			license, err := licenseStore.GetLicenseByID(licenseID)
-			if err != nil || license == nil {
-				http.Error(w, "Invalid license", http.StatusUnauthorized)
-				return
-			}
+			// licenseID := r.Header.Get("LicenseID")
+
+			// _, err := uuid.Parse(licenseID)
+			// if err != nil {
+			// 	http.Error(w, "Invalid license ID", http.StatusUnauthorized)
+			// 	return
+			// }
+
+			// license, err := licenseStore.GetLicenseByID(licenseID)
+			// if err != nil || license == nil {
+			// 	http.Error(w, "Invalid license", http.StatusUnauthorized)
+			// 	return
+			// }
 
 			if !license.IsValid {
 				http.Error(w, "Expired license", http.StatusUnauthorized)

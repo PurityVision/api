@@ -14,7 +14,6 @@ import (
 type BatchAnnotateResponse map[string]*pb.AnnotateImageResponse
 
 func GetAnnoClient(ctx context.Context) (*vision.ImageAnnotatorClient, error) {
-	fmt.Printf("Google Credentials from env: %s\n", os.Getenv("GOOGLE_CREDENTIALS"))
 	jwtConfig, err := google.JWTConfigFromJSON([]byte(os.Getenv("GOOGLE_CREDENTIALS")), vision.DefaultAuthScopes()...)
 	if err != nil {
 		fmt.Printf("JWTConfigFromJSON failed: %v", err)
@@ -33,7 +32,7 @@ func GetAnnoClient(ctx context.Context) (*vision.ImageAnnotatorClient, error) {
 
 func BatchGetImgAnnotation(uris []string) (*pb.BatchAnnotateImagesResponse, error) {
 	ctx := context.Background()
-	client, err := GetAnnoClient(ctx)
+	client, err := vision.NewImageAnnotatorClient(ctx)
 	if err != nil {
 		return nil, err
 	}

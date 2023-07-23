@@ -10,10 +10,10 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     links:
       - postgres
-    command: bash -c 'while !</dev/tcp/postgres/5432; do sleep 1; done; ./purity-vision -port 8080'
     ports:
       - "8080:8080"
     secrets:
@@ -40,4 +40,9 @@ services:
     volumes:
       # - "/pg-docker-data:/var/lib/postgresql/data"
       - "${PROJECT_ROOT}/pg-data:/var/lib/postgresql/data"
-      - "${PROJECT_ROOT}/build:/docker-entrypoint-initdb.d"
+      - "${PROJECT_ROOT}/migrations:/docker-entrypoint-initdb.d"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${PURITY_DB_USER}", "-d", "${PURITY_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

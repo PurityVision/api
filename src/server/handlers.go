@@ -6,9 +6,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"purity-vision-filter/src/images"
 	"purity-vision-filter/src/mail"
 	"purity-vision-filter/src/utils"
+
+	lic "purity-vision-filter/src/license"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
@@ -76,9 +79,9 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 				endIdx = i + MAX_IMAGES_PER_REQUEST
 			}
 
-			temp, err := filterImages(uris[i:endIdx])
+			temp, err := filterImages(uris[i:endIdx], req.Header.Get("LicenseID"))
 			if err != nil {
-				logger.Error().Msgf("Error while filtering: %s\n", err)
+				logger.Error().Msgf("error while filtering: %s\n", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -93,13 +96,6 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 	}
 }
 
-type License struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	StripeID string `json:"stripeID"`
-	IsValid  bool   `json:"isValid"`
-}
-
 func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	const MaxBodyBytes = int64(65536)
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
@@ -110,10 +106,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// This is your Stripe CLI webhook secret for testing your endpoint locally.
-	endpointSecret := "whsec_d42d413b9f320b257032560cf653914f09edc52ee4f479cfaada92ddd402de6c"
-	// Pass the request body and Stripe-Signature header to ConstructEvent, along
-	// with the webhook signing key.
+	endpointSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"),
 		endpointSecret)
 
@@ -127,7 +120,6 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	switch event.Type {
 	// case "charge.succeeded":
 	case "invoice.payment_succeeded":
-		// Lookup license by customer id
 		invoice := stripe.Invoice{}
 		err := json.Unmarshal(event.Data.Raw, &invoice)
 		if err != nil {
@@ -135,6 +127,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
 		stripeID := invoice.Customer.ID
 		email := invoice.CustomerEmail
 
@@ -163,7 +156,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		licenseID := utils.GenerateLicenseKey()
 		logger.Debug().Msgf("Generated license: %s\n", licenseID)
 
-		license = &License{
+		license = &lic.License{
 			ID:       licenseID,
 			Email:    email,
 			StripeID: stripeID,
@@ -294,7 +287,7 @@ func RegisterNewUser(email string) error {
 	licenseID := utils.GenerateLicenseKey()
 	logger.Debug().Msgf("Generated license: %s\n", licenseID)
 
-	license := &License{
+	license := &lic.License{
 		ID:       licenseID,
 		Email:    email,
 		StripeID: "trial",

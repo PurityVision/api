@@ -32,7 +32,7 @@ func Init(dbName string) (*pg.DB, error) {
 	dbUser := config.DBUser
 	dbPassword := config.DBPassword
 	if dbPassword == "" {
-		return nil, fmt.Errorf("Missing postgres password. Export \"PURITY_DB_PASS=<your_password>\"")
+		return nil, fmt.Errorf("missing postgres password. Export \"PURITY_DB_PASS=<your_password>\"")
 	}
 
 	// TODO: use

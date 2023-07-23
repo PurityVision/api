@@ -12,6 +12,7 @@ import (
 	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/db"
 	"purity-vision-filter/src/images"
+	lic "purity-vision-filter/src/license"
 	"testing"
 	"time"
 
@@ -88,19 +89,36 @@ func TestHealthHandler(t *testing.T) {
 	testHealthJunkBody(t)
 }
 
-func beforeTest() {
-	conn, _ := db.Init(config.DefaultDBTestName)
-	defer conn.Close()
+func testCleanup() {
 	conn.Model(&images.ImageAnnotation{}).Where("1=1").Delete()
+	_, err := conn.Model(&lic.License{}).Where("1=1").Delete()
+	if err != nil {
+		fmt.Println("error: ", err)
+	}
+	defer conn.Close()
 }
 
+const testLicenseID = "797e2754-7547-49c2-acfb-fa7b8357ab03"
+
 func TestFilterHandlerTable(t *testing.T) {
-	t.Cleanup(beforeTest)
+	t.Cleanup(testCleanup)
+
 	conn, err := db.Init(config.DefaultDBTestName)
+	pgStore = NewPGStore(conn)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+
+	license := &lic.License{
+		ID:       testLicenseID,
+		Email:    "test@email.com",
+		StripeID: "stripe id",
+		IsValid:  true,
+	}
+
+	if _, err = conn.Model(license).Insert(); err != nil {
+		t.Error("failed to create test license")
+	}
 
 	s := TestServe{}
 	s.Init(conn)
@@ -261,6 +279,7 @@ func testFilterHandler(fr *AnnotateReq) (*httptest.ResponseRecorder, error) {
 	r := bytes.NewReader(b)
 
 	req, err := http.NewRequest("POST", "/filter", r)
+	req.Header.Add("LicenseID", testLicenseID)
 	if err != nil {
 		return nil, errors.New("Failed to create test HTTP request")
 	}

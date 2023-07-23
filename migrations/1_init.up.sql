@@ -34,12 +34,13 @@ CREATE TABLE public.image_annotations
 ALTER TABLE public.image_annotations
     OWNER to postgres;
 
-create table public.licenses
+CREATE TABLE public.licenses
 (
     id text,
     email text DEFAULT 'test@purityvision.com',
     stripe_id text,
     is_valid boolean default false,
+    request_count int,
     primary key (id)
 );
 

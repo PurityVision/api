@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -15,8 +16,16 @@ import (
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
-func filterImages(uris []string) ([]*images.ImageAnnotation, error) {
+func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, error) {
 	var res []*images.ImageAnnotation
+
+	license, err := pgStore.GetLicenseByID(licenseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch license: %s\n", err.Error())
+	}
+	if license == nil {
+		return nil, errors.New("license not found")
+	}
 
 	annotations, err := images.FindAnnotationsByURI(conn, uris)
 	if err != nil {
@@ -50,13 +59,21 @@ func filterImages(uris []string) ([]*images.ImageAnnotation, error) {
 	for i, annotateRes := range batchRes.Responses {
 		uri := uris[i]
 		annotation := visionToAnnotation(uri, annotateRes)
+
+		license.RequestCount++
+		if err = pgStore.UpdateLicense(license); err != nil {
+			return nil, fmt.Errorf("failed to update license request count: %s\n", err.Error())
+		}
+
 		res = append(res, annotation)
 		err = cacheAnnotation(annotation)
 		if err != nil {
-			logger.Debug().Msgf("Failed to cache with uris: %v", uris)
+			logger.Debug().Msgf("failed to cache with uris: %v", uris)
 			return nil, err
 		}
 	}
+
+	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(batchRes.Responses))
 
 	return res, nil
 }

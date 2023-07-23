@@ -17,7 +17,7 @@ type Email struct {
 }
 
 func SendMail(email Email) error {
-	from := mail.NewEmail("GRAYWAREZ", "info@graywarez.com")
+	from := mail.NewEmail("Purity Vision", "admin@purityvision.app")
 
 	to := mail.NewEmail(email.Name, email.To)
 	message := mail.NewSingleEmail(from, email.Subject, to, email.Plain, email.Html)

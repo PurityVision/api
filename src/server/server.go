@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	lic "purity-vision-filter/src/license"
+
 	"github.com/go-pg/pg/v10"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -25,8 +27,8 @@ func NewPGStore(db *pg.DB) *PGStore {
 	return &PGStore{db: db}
 }
 
-func (store *PGStore) GetLicenseByID(id string) (*License, error) {
-	license := new(License)
+func (store *PGStore) GetLicenseByID(id string) (*lic.License, error) {
+	license := new(lic.License)
 	err := store.db.Model(license).Where("id = ?", id).Select()
 	if err != nil {
 		if err == pg.ErrNoRows {
@@ -37,8 +39,8 @@ func (store *PGStore) GetLicenseByID(id string) (*License, error) {
 	return license, nil
 }
 
-func (store *PGStore) GetLicenseByStripeID(stripeID string) (*License, error) {
-	license := new(License)
+func (store *PGStore) GetLicenseByStripeID(stripeID string) (*lic.License, error) {
+	license := new(lic.License)
 	err := store.db.Model(license).Where("stripe_id = ?", stripeID).Select()
 	if err != nil {
 		if err == pg.ErrNoRows {
@@ -49,13 +51,13 @@ func (store *PGStore) GetLicenseByStripeID(stripeID string) (*License, error) {
 	return license, nil
 }
 
-func (store *PGStore) UpdateLicense(license *License) error {
-	_, err := store.db.Model(license).Update(license)
+func (store *PGStore) UpdateLicense(license *lic.License) error {
+	_, err := store.db.Model(license).Where("id = ?", license.ID).Update(license)
 	return err
 }
 
-func (store *PGStore) GetLicenseByEmail(email string) (*License, error) {
-	license := new(License)
+func (store *PGStore) GetLicenseByEmail(email string) (*lic.License, error) {
+	license := new(lic.License)
 	err := store.db.Model(license).Where("email = ?", email).Select()
 	if err != nil {
 		if err == pg.ErrNoRows {
