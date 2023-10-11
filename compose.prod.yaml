@@ -2,20 +2,18 @@ version: "3.7"
 name: purity-vision
 secrets:
   google_credentials:
-    file: secrets/google-credentials.json
+    file: ./google-credentials.json
 services:
-  api:
-    image: purity-vision:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+  web:
+    image: gradeycullins/purity-vision:latest
+    pull_policy: always
     depends_on:
       db:
         condition: service_healthy
     links:
       - db
     ports:
-      - "8080:8080"
+      - "9090:8080"
     secrets:
       - google_credentials
     environment:
@@ -26,7 +24,6 @@ services:
       - PURITY_DB_PASS=${PURITY_DB_PASS}
       - PURITY_DB_SSL_MODE=${PURITY_DB_SSL_MODE}
       - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google_credentials
-      - PROJECT_ROOT=${PROJECT_ROOT}
       - PURITY_LOG_LEVEL=${PURITY_LOG_LEVEL}
   db:
     image: postgres:latest
@@ -49,3 +46,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+networks:
+  default:
+    external: true
+    name: 'gnas-npm'

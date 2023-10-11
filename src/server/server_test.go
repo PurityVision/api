@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/db"
 	"purity-vision-filter/src/images"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
+	"github.com/joho/godotenv"
 )
 
 type TestServe struct {
@@ -100,10 +102,27 @@ func testCleanup() {
 
 const testLicenseID = "797e2754-7547-49c2-acfb-fa7b8357ab03"
 
+var err error
+
+func TestMain(m *testing.M) {
+	if err := godotenv.Load("../../.env"); err != nil {
+		log.Fatal(err)
+	}
+	config.Init()
+
+	conn, err = db.Init(config.DefaultDBTestName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	exitCode := m.Run()
+
+	os.Exit(exitCode)
+}
+
 func TestFilterHandlerTable(t *testing.T) {
 	t.Cleanup(testCleanup)
 
-	conn, err := db.Init(config.DefaultDBTestName)
 	pgStore = NewPGStore(conn)
 	if err != nil {
 		log.Fatal(err)

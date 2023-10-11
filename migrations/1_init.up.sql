@@ -37,8 +37,9 @@ ALTER TABLE public.image_annotations
 CREATE TABLE public.licenses
 (
     id text,
-    email text DEFAULT 'test@purityvision.com',
-    stripe_id text,
+    email text CONSTRAINT unique_email UNIQUE,
+    stripe_id text CONSTRAINT unique_stripe_id UNIQUE,
+    subscription_id text CONSTRAINT unique_subscription_id UNIQUE,
     is_valid boolean default false,
     request_count int,
     primary key (id)

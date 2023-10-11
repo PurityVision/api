@@ -27,6 +27,7 @@ func NewPGStore(db *pg.DB) *PGStore {
 	return &PGStore{db: db}
 }
 
+// GetLicenseByID fetches a license from DB by license ID
 func (store *PGStore) GetLicenseByID(id string) (*lic.License, error) {
 	license := new(lic.License)
 	err := store.db.Model(license).Where("id = ?", id).Select()

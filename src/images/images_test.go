@@ -2,6 +2,7 @@ package images
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"purity-vision-filter/src/config"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
+	"github.com/joho/godotenv"
 )
 
 var conn *pg.DB
@@ -23,6 +25,12 @@ var imgURIList = []string{
 }
 
 func TestMain(m *testing.M) {
+	if err := godotenv.Load("../../.env"); err != nil {
+		log.Fatal(err)
+	}
+	config.Init()
+
+	fmt.Println("Got value: ", os.Getenv("PURITY_DB_HOST"))
 	conn, err = db.Init(config.DefaultDBTestName)
 	if err != nil {
 		log.Fatal(err)

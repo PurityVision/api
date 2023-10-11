@@ -1,11 +1,12 @@
 package license
 
 type License struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	StripeID     string `json:"stripeID"`
-	IsValid      bool   `json:"isValid"`
-	RequestCount int    `json:"requestCount"`
+	ID             string `json:"id"`
+	Email          string `json:"email"`
+	StripeID       string `json:"stripeID"`
+	SubscriptionID string `json:"subscriptionID"`
+	IsValid        bool   `json:"isValid"`
+	RequestCount   int    `json:"requestCount"`
 }
 
 type LicenseStore interface {

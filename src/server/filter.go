@@ -8,20 +8,24 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/images"
+	"purity-vision-filter/src/license"
 	"purity-vision-filter/src/utils"
 	"purity-vision-filter/src/vision"
 	"time"
 
+	"github.com/stripe/stripe-go/v74"
+	"github.com/stripe/stripe-go/v74/subscription"
+	"github.com/stripe/stripe-go/v74/usagerecord"
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
 func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, error) {
 	var res []*images.ImageAnnotation
-
 	license, err := pgStore.GetLicenseByID(licenseID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch license: %s\n", err.Error())
+		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
 	}
 	if license == nil {
 		return nil, errors.New("license not found")
@@ -56,26 +60,77 @@ func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, e
 		return nil, err
 	}
 
+	defer func(quantity int) {
+		if quantity < 1 {
+			return
+		}
+
+		license.RequestCount += len(batchRes.Responses)
+		if err = pgStore.UpdateLicense(license); err != nil {
+			logger.Debug().Msgf("failed to update license request count: %s", err.Error())
+		}
+
+		if err = incrementSubscriptionMeter(license, int64(quantity)); err != nil {
+			logger.Debug().Msgf("failed to update stripe subscription usage: %s", err.Error())
+		}
+	}(len(batchRes.Responses))
+
+	newAnnos := make([]*images.ImageAnnotation, 0)
 	for i, annotateRes := range batchRes.Responses {
 		uri := uris[i]
-		annotation := visionToAnnotation(uri, annotateRes)
+		newAnnos = append(newAnnos, visionToAnnotation(uri, annotateRes))
+	}
+	res = append(res, newAnnos...)
 
-		license.RequestCount++
-		if err = pgStore.UpdateLicense(license); err != nil {
-			return nil, fmt.Errorf("failed to update license request count: %s\n", err.Error())
-		}
-
-		res = append(res, annotation)
-		err = cacheAnnotation(annotation)
-		if err != nil {
-			logger.Debug().Msgf("failed to cache with uris: %v", uris)
-			return nil, err
-		}
+	err = cacheAnnotations(newAnnos)
+	if err != nil {
+		logger.Debug().Msgf("failed to cache with uris: %v", uris)
+		return nil, err
 	}
 
 	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(batchRes.Responses))
 
 	return res, nil
+}
+
+func fetchStripeSubscription(lic *license.License) (*stripe.Subscription, error) {
+	if config.StripeKey == "" {
+		return nil, errors.New("STRIPE_KEY env var not found")
+	}
+
+	stripe.Key = config.StripeKey
+
+	sub, err := subscription.Get(lic.SubscriptionID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("got sub: ", sub.ID)
+
+	return sub, nil
+}
+
+func incrementSubscriptionMeter(lic *license.License, quantity int64) error {
+	if config.StripeKey == "" {
+		return errors.New("STRIPE_KEY env var not found")
+	}
+
+	stripe.Key = config.StripeKey
+
+	s, err := fetchStripeSubscription(lic)
+	if err != nil {
+		return err
+	}
+
+	params := &stripe.UsageRecordParams{
+		SubscriptionItem: &s.Items.Data[0].ID,
+		Action:           stripe.String(string(stripe.UsageRecordActionIncrement)),
+		Quantity:         &quantity,
+	}
+
+	_, err = usagerecord.New(params)
+
+	return err
 }
 
 func visionToAnnotation(uri string, air *pb.AnnotateImageResponse) *images.ImageAnnotation {
@@ -125,6 +180,18 @@ func cacheAnnotation(anno *images.ImageAnnotation) error {
 		logger.Debug().Msgf("Adding %s to DB cache", anno.URI)
 		return nil
 	}
+}
+
+func cacheAnnotations(annos []*images.ImageAnnotation) error {
+	if err := images.InsertAll(conn, annos); err != nil {
+		return err
+	}
+
+	for _, anno := range annos {
+		logger.Debug().Msgf("Adding %s to DB cache", anno.URI)
+	}
+
+	return nil
 }
 
 func fetchAndReadFile(uri string) (string, string, error) {

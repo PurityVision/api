@@ -48,6 +48,20 @@ func Insert(conn *pg.DB, image *ImageAnnotation) error {
 	return nil
 }
 
+func InsertAll(conn *pg.DB, images []*ImageAnnotation) error {
+	if len(images) == 0 {
+		return nil
+	}
+
+	_, err := conn.Model(&images).Insert()
+	if err != nil {
+		return err
+	}
+	logger.Debug().Msgf("inserted %d images", len(images))
+
+	return nil
+}
+
 // DeleteByURI deletes the images with matching URI.
 func DeleteByURI(conn *pg.DB, uri string) error {
 	img := ImageAnnotation{URI: uri}

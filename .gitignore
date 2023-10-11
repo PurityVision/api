@@ -9,5 +9,4 @@ pg-data/
 secrets/
 config/.env.prod
 .DS_Store
-/config/*
-!/config/.env.example
+.env

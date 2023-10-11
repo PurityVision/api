@@ -15,8 +15,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
-	"github.com/stripe/stripe-go"
-	"github.com/stripe/stripe-go/webhook"
+	"github.com/stripe/stripe-go/v74"
+	"github.com/stripe/stripe-go/v74/webhook"
 )
 
 func health(w http.ResponseWriter, req *http.Request) {
@@ -65,7 +65,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 		// Validate the request payload URIs
 		for _, uri := range uris {
 			if _, err := url.ParseRequestURI(uri); err != nil {
-				writeError(400, fmt.Sprintf("%s is not a valid URI\n", uri), w)
+				writeError(400, fmt.Sprintf("%s is not a valid URI", uri), w)
 				return
 			}
 		}
@@ -81,7 +81,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 
 			temp, err := filterImages(uris[i:endIdx], req.Header.Get("LicenseID"))
 			if err != nil {
-				logger.Error().Msgf("error while filtering: %s\n", err)
+				logger.Error().Msgf("error while filtering: %s", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -101,7 +101,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
 	payload, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		logger.Debug().Msgf("Error reading request body: %v\n", err)
+		logger.Debug().Msgf("Error reading request body: %v", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -111,29 +111,30 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		endpointSecret)
 
 	if err != nil {
-		logger.Debug().Msgf("Error verifying webhook signature: %v\n", err)
+		logger.Debug().Msgf("error verifying webhook signature: %v", err)
 		w.WriteHeader(http.StatusBadRequest) // Return a 400 error on a bad signature
 		return
 	}
 
 	// Unmarshal the event data into an appropriate struct depending on its Type
 	switch event.Type {
-	// case "charge.succeeded":
+	// case "customer.subscription.created"
 	case "invoice.payment_succeeded":
 		invoice := stripe.Invoice{}
 		err := json.Unmarshal(event.Data.Raw, &invoice)
 		if err != nil {
-			fmt.Fprintf(w, "Error parsing webhook JSON: %v\n", err)
+			fmt.Fprintf(w, "error parsing webhook JSON: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
+		subscriptionID := invoice.Subscription.ID
 		stripeID := invoice.Customer.ID
 		email := invoice.CustomerEmail
 
 		license, err := pgStore.GetLicenseByStripeID(stripeID)
 		if err != nil {
-			logger.Debug().Msgf("Error fetching license: %v\n", err)
+			logger.Debug().Msgf("Error fetching license: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -154,24 +155,25 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		// else create new license and store in db
 		logger.Debug().Msg("No license found. Creating one")
 		licenseID := utils.GenerateLicenseKey()
-		logger.Debug().Msgf("Generated license: %s\n", licenseID)
+		logger.Debug().Msgf("Generated license: %s", licenseID)
 
 		license = &lic.License{
-			ID:       licenseID,
-			Email:    email,
-			StripeID: stripeID,
-			IsValid:  true,
+			ID:             licenseID,
+			Email:          email,
+			StripeID:       stripeID,
+			SubscriptionID: subscriptionID,
+			IsValid:        true,
 		}
 
 		if _, err = conn.Model(license).Insert(); err != nil {
-			logger.Debug().Msgf("Error creating: %v\n", err)
+			logger.Debug().Msgf("error creating: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
 		if err = mail.SendLicenseMail(license.Email, license.ID); err != nil {
 			// TODO: retry sending email so user can get their license.
-			logger.Debug().Msgf("Error sending license email: %v\n", err)
+			logger.Debug().Msgf("error sending license email: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -179,41 +181,36 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		sub := stripe.Subscription{}
 		err := json.Unmarshal(event.Data.Raw, &sub)
 		if err != nil {
-			fmt.Fprintf(w, "Error parsing webhook JSON: %v\n", err)
+			fmt.Fprintf(w, "error parsing webhook JSON: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		license, err := pgStore.GetLicenseByStripeID(sub.Customer.ID)
 		if err != nil {
-			logger.Debug().Msgf("Error finding license for valid subscriber: %v\n", err)
+			logger.Debug().Msgf("error finding license for valid subscriber: %v", err)
 		}
 		if license == nil {
-			logger.Debug().Msg("Failed to find license for existing subscriber. Something is terribly wrong")
+			logger.Debug().Msg("failed to find license for existing subscriber. Something is terribly wrong")
 			PrintSomethingWrong(w)
 			return
 		}
 
-		switch sub.Status {
-		case stripe.SubscriptionStatusActive:
-			license.IsValid = true
-			logger.Debug().Msgf("Activated license: %s\n", license.ID)
-		case stripe.SubscriptionStatusIncomplete:
-		case stripe.SubscriptionStatusIncompleteExpired:
-		case stripe.SubscriptionStatusPastDue:
-		case stripe.SubscriptionStatusUnpaid:
-		case stripe.SubscriptionStatusCanceled:
+		if sub.CancellationDetails.Reason != "" {
 			license.IsValid = false
-			logger.Debug().Msgf("Invalidated license: %s\n", license.ID)
+			logger.Debug().Msgf("invalidated license: %s", license.ID)
+		} else {
+			license.IsValid = true
+			logger.Debug().Msgf("activated license: %s", license.ID)
 		}
 
 		if err = pgStore.UpdateLicense(license); err != nil {
-			logger.Debug().Msgf("Error updating license: %v\n", err)
+			logger.Debug().Msgf("error updating license: %v", err)
 			PrintSomethingWrong(w)
 			return
 		}
 	default:
-		// fmt.Fprintf(os.Stderr, "Unhandled event type: %s\n", event.Type)
+		fmt.Fprintf(os.Stderr, "Unhandled event type: %s", event.Type)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -223,11 +220,11 @@ func getLicense(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	licenseID := vars["id"]
 
-	logger.Debug().Msgf("Verifying license: %s\n", licenseID)
+	logger.Debug().Msgf("verifying license: %s", licenseID)
 
 	license, err := pgStore.GetLicenseByID(licenseID)
 	if err != nil {
-		logger.Debug().Msgf("Verifying license: %s\n", licenseID)
+		logger.Debug().Msgf("verifying license: %s", licenseID)
 		w.WriteHeader(http.StatusInternalServerError)
 		PrintSomethingWrong(w)
 		return
@@ -257,25 +254,27 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if trialReq.Email == "" {
-		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Email cannot be empty")
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	license, err := pgStore.GetLicenseByEmail(trialReq.Email)
 	if err != nil {
+		logger.Debug().Msgf("failed to fetch license by email: %s", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if license != nil {
+		logger.Debug().Msg("email is already registered")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Email is already registered")
+		fmt.Fprint(w, "email is already registered")
 		return
 	}
 
 	if err = RegisterNewUser(trialReq.Email); err != nil {
-		logger.Debug().Msgf("Something went wrong registering a new user: %v", err)
+		logger.Debug().Msgf("something went wrong registering a new user: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -285,7 +284,7 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 
 func RegisterNewUser(email string) error {
 	licenseID := utils.GenerateLicenseKey()
-	logger.Debug().Msgf("Generated license: %s\n", licenseID)
+	logger.Debug().Msgf("generated license: %s", licenseID)
 
 	license := &lic.License{
 		ID:       licenseID,
@@ -295,13 +294,13 @@ func RegisterNewUser(email string) error {
 	}
 
 	if _, err := conn.Model(license).Insert(); err != nil {
-		logger.Debug().Msgf("Error creating: %v\n", err)
+		logger.Debug().Msgf("error creating: %v", err)
 		return err
 	}
 
 	if err := mail.SendLicenseMail(license.Email, license.ID); err != nil {
 		// TODO: retry sending email so user can get their license.
-		logger.Debug().Msgf("Error sending license email: %v\n", err)
+		logger.Debug().Msgf("error sending license email: %v", err)
 		return err
 	}
 
