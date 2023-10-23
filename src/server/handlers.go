@@ -224,7 +224,7 @@ func getLicense(w http.ResponseWriter, req *http.Request) {
 
 	license, err := pgStore.GetLicenseByID(licenseID)
 	if err != nil {
-		logger.Debug().Msgf("verifying license: %s", licenseID)
+		logger.Error().Msgf("failed to get license: %s", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		PrintSomethingWrong(w)
 		return
