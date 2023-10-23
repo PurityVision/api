@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/db"
@@ -24,8 +23,6 @@ func main() {
 	config.Init()
 	flag.IntVar(&portFlag, "port", config.DefaultPort, "port to run the service on")
 	flag.Parse()
-
-	fmt.Println("I am a new version!!")
 
 	logLevel, err := strconv.Atoi(config.LogLevel)
 	if err != nil {
