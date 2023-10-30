@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
@@ -38,48 +39,63 @@ var (
 	// LogLevel is the level of logging for the application.
 	LogLevel string
 
+	// StripeKey is for making Stripe API requests.
 	StripeKey string
 
-	// Name on email license delivery
+	// Name on email license delivery.
 	EmailName string
 
-	// From address for email license delivery
+	// SendgridAPIKey is for sending emails.
+	SendgridAPIKey string
+
+	// Stripe webhook secret.
+	StripeWebhookSecret string
+
+	// From address for email license delivery.
 	EmailFrom string
 )
 
-func Init() {
-	// DefaultPort is the default port to expose the API server.
+func Init() error {
 	DefaultPort = 8080
 
-	// DBHost is the host machine running the postgres instance.
 	DBHost = getEnvWithDefault("PURITY_DB_HOST", "localhost")
-
-	// DBPort is the port that exposes the db server.
 	DBPort = getEnvWithDefault("PURITY_DB_PORT", "5432")
-
-	// DBName is the postgres database name.
 	DBName = getEnvWithDefault("PURITY_DB_NAME", DefaultDBName)
-
-	// DBUser is the postgres user account.
 	DBUser = getEnvWithDefault("PURITY_DB_USER", "postgres")
-
-	// DBPassword is the password for the DBUser postgres account.
 	DBPassword = getEnvWithDefault("PURITY_DB_PASS", "")
-
-	// DBSSLMode sets the SSL mode of the postgres client.
 	DBSSLMode = getEnvWithDefault("PURITY_DB_SSL_MODE", "disable")
 
-	// LogLevel is the level of logging for the application.
 	LogLevel = getEnvWithDefault("PURITY_LOG_LEVEL", strconv.Itoa(int(zerolog.InfoLevel)))
 
-	StripeKey = os.Getenv("STRIPE_KEY")
+	missingEnvErr := func(envVar string) error {
+		return fmt.Errorf("%s not found in environment", envVar)
+	}
 
-	// Name on email license delivery
-	EmailName = getEnvWithDefault("EMAIL_NAME", "John Doe")
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		return missingEnvErr("GOOGLE_APPLICATION_CREDENTIALS")
+	}
 
-	// From address for email license delivery
-	EmailFrom = getEnvWithDefault("EMAIL_FROM", "test@example.com")
+	if StripeKey = os.Getenv("STRIPE_KEY"); StripeKey == "" {
+		return missingEnvErr("STRIPE_KEY")
+	}
 
+	if StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET"); StripeWebhookSecret == "" {
+		return missingEnvErr("STRIPE_WEBHOOK_SECRET")
+	}
+
+	if EmailName = getEnvWithDefault("EMAIL_NAME", "John Doe"); EmailName == "" {
+		return missingEnvErr("EMAIL_NAME")
+	}
+
+	if EmailFrom = getEnvWithDefault("EMAIL_FROM", "test@example.com"); EmailFrom == "" {
+		return missingEnvErr("EMAIL_FROM")
+	}
+
+	if SendgridAPIKey = os.Getenv("SENDGRID_API_KEY"); SendgridAPIKey == "" {
+		return missingEnvErr("SENDGRID_API_KEY")
+	}
+
+	return nil
 }
 
 func getEnvWithDefault(name string, def string) string {

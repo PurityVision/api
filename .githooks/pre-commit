@@ -1,6 +1,6 @@
 #!/bin/sh
 
 if ! make test; then
-echo "Please fix tests before committing."
+	echo "Please fix tests before committing."
 	exit 1
 fi

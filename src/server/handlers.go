@@ -3,10 +3,11 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/images"
 	"purity-vision-filter/src/mail"
 	"purity-vision-filter/src/utils"
@@ -31,7 +32,7 @@ func removeDuplicates(vals []string) []string {
 	strMap := make(map[string]bool, 0)
 
 	for _, v := range vals {
-		if found := strMap[v]; found == true {
+		if found := strMap[v]; found {
 			logger.Debug().Msgf("Found duplicate image: %s in request. Removing.", v)
 			continue
 		}
@@ -99,16 +100,16 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	const MaxBodyBytes = int64(65536)
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
-	payload, err := ioutil.ReadAll(req.Body)
+	payload, err := io.ReadAll(req.Body)
 	if err != nil {
 		logger.Debug().Msgf("Error reading request body: %v", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 
-	endpointSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"),
-		endpointSecret)
+	// endpointSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	endpointSecret := config.StripeWebhookSecret
+	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"), endpointSecret)
 
 	if err != nil {
 		logger.Debug().Msgf("error verifying webhook signature: %v", err)
@@ -119,18 +120,18 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	// Unmarshal the event data into an appropriate struct depending on its Type
 	switch event.Type {
 	// case "customer.subscription.created"
-	case "invoice.payment_succeeded":
-		invoice := stripe.Invoice{}
-		err := json.Unmarshal(event.Data.Raw, &invoice)
+	case "checkout.session.completed":
+		var session stripe.CheckoutSession
+		err := json.Unmarshal(event.Data.Raw, &session)
 		if err != nil {
-			fmt.Fprintf(w, "error parsing webhook JSON: %v", err)
+			fmt.Fprintf(os.Stderr, "Error parsing webhook JSON: %v\n", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		subscriptionID := invoice.Subscription.ID
-		stripeID := invoice.Customer.ID
-		email := invoice.CustomerEmail
+		subscriptionID := session.Subscription.ID
+		stripeID := session.Customer.ID
+		email := session.CustomerDetails.Email
 
 		license, err := pgStore.GetLicenseByStripeID(stripeID)
 		if err != nil {

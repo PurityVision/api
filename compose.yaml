@@ -19,15 +19,19 @@ services:
     secrets:
       - google_credentials
     environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google_credentials
       - PURITY_DB_HOST=${PURITY_DB_HOST}
       - PURITY_DB_PORT=${PURITY_DB_PORT}
       - PURITY_DB_NAME=${PURITY_DB_NAME}
       - PURITY_DB_USER=${PURITY_DB_USER}
       - PURITY_DB_PASS=${PURITY_DB_PASS}
       - PURITY_DB_SSL_MODE=${PURITY_DB_SSL_MODE}
-      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google_credentials
-      - PROJECT_ROOT=${PROJECT_ROOT}
       - PURITY_LOG_LEVEL=${PURITY_LOG_LEVEL}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_KEY=${STRIPE_KEY}
+      - EMAIL_NAME=${EMAIL_NAME}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
   db:
     image: postgres:latest
     hostname: postgres

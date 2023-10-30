@@ -20,7 +20,10 @@ func main() {
 		log.Fatal().Err(err)
 	}
 
-	config.Init()
+	if err := config.Init(); err != nil {
+		log.Fatal().Msg(err.Error())
+	}
+
 	flag.IntVar(&portFlag, "port", config.DefaultPort, "port to run the service on")
 	flag.Parse()
 

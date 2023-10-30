@@ -5,9 +5,7 @@ WORKDIR /go/src/purity-vision
 COPY . .
 
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o purity-vision .
-
-# RUN GOOS=linux GOARCH=amd64 go build -o purity-vision .
+RUN CGO_ENABLED=0 go build -a -installsuffix cgo -o purity-vision .
 
 # Stage 2: Runtime
 FROM alpine:latest
