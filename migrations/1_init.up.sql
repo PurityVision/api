@@ -40,7 +40,8 @@ CREATE TABLE public.licenses
     email text CONSTRAINT unique_email UNIQUE,
     stripe_id text CONSTRAINT unique_stripe_id UNIQUE,
     subscription_id text CONSTRAINT unique_subscription_id UNIQUE,
-    is_valid boolean default false,
+    is_valid boolean DEFAULT false,
+    is_trial BOOLEAN DEFAULT FALSE;
     request_count int,
     primary key (id)
 );

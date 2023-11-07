@@ -1,29 +1,20 @@
 package server
 
 import (
-	"bufio"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"purity-vision-filter/src/config"
 	"purity-vision-filter/src/images"
-	"purity-vision-filter/src/license"
 	"purity-vision-filter/src/utils"
 	"purity-vision-filter/src/vision"
 	"time"
 
-	"github.com/stripe/stripe-go/v74"
-	"github.com/stripe/stripe-go/v74/subscription"
-	"github.com/stripe/stripe-go/v74/usagerecord"
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
 func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, error) {
 	var res []*images.ImageAnnotation
-	license, err := pgStore.GetLicenseByID(licenseID)
+	license, err := licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
 	}
@@ -31,154 +22,88 @@ func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, e
 		return nil, errors.New("license not found")
 	}
 
-	annotations, err := images.FindAnnotationsByURI(conn, uris)
+	cachedSSAs, err := images.FindAnnotationsByURI(conn, uris)
 	if err != nil {
 		return nil, err
 	}
 
-	newURIs := make([]string, 0)
+	noncachedURIs := make([]string, 0)
 
 	for _, uri := range uris {
 		found := false
-		for _, anno := range annotations {
-			if anno.URI == uri {
-				res = append(res, &anno)
+		for _, cachedSSA := range cachedSSAs {
+			if cachedSSA.URI == uri {
+				res = append(res, &cachedSSA)
 				found = true
 				logger.Debug().Msgf("Found cached image: %s", uri)
 				break
 			}
 		}
 		if !found {
-			newURIs = append(newURIs, uri)
+			noncachedURIs = append(noncachedURIs, uri)
 		}
 	}
 
-	uris = newURIs
+	uris = noncachedURIs
 
-	batchRes, err := vision.BatchGetImgAnnotation(uris)
+	safeSearchAnnotations, errs, err := vision.GetImgSSAs(uris, license, licenseStore)
 	if err != nil {
 		return nil, err
 	}
 
-	defer func(quantity int) {
-		if quantity < 1 {
-			return
+	imageAnnotations := make([]*images.ImageAnnotation, 0)
+	for i, safeSearchAnnotation := range safeSearchAnnotations {
+		if safeSearchAnnotation == nil {
+			continue
 		}
-
-		license.RequestCount += len(batchRes.Responses)
-		if err = pgStore.UpdateLicense(license); err != nil {
-			logger.Debug().Msgf("failed to update license request count: %s", err.Error())
-		}
-
-		if err = incrementSubscriptionMeter(license, int64(quantity)); err != nil {
-			logger.Debug().Msgf("failed to update stripe subscription usage: %s", err.Error())
-		}
-	}(len(batchRes.Responses))
-
-	newAnnos := make([]*images.ImageAnnotation, 0)
-	for i, annotateRes := range batchRes.Responses {
 		uri := uris[i]
-		newAnnos = append(newAnnos, visionToAnnotation(uri, annotateRes))
+		imageAnnotations = append(imageAnnotations, visionToAnnotation(uri, safeSearchAnnotation, errs[i]))
 	}
-	res = append(res, newAnnos...)
+	res = append(res, imageAnnotations...)
 
-	err = cacheAnnotations(newAnnos)
+	err = cacheAnnotations(imageAnnotations)
 	if err != nil {
 		logger.Debug().Msgf("failed to cache with uris: %v", uris)
 		return nil, err
 	}
 
-	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(batchRes.Responses))
+	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(safeSearchAnnotations))
 
 	return res, nil
 }
 
-func fetchStripeSubscription(lic *license.License) (*stripe.Subscription, error) {
-	if config.StripeKey == "" {
-		return nil, errors.New("STRIPE_KEY env var not found")
-	}
-
-	stripe.Key = config.StripeKey
-
-	sub, err := subscription.Get(lic.SubscriptionID, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Println("got sub: ", sub.ID)
-
-	return sub, nil
-}
-
-func incrementSubscriptionMeter(lic *license.License, quantity int64) error {
-	if config.StripeKey == "" {
-		return errors.New("STRIPE_KEY env var not found")
-	}
-
-	stripe.Key = config.StripeKey
-
-	s, err := fetchStripeSubscription(lic)
-	if err != nil {
-		return err
-	}
-
-	params := &stripe.UsageRecordParams{
-		SubscriptionItem: &s.Items.Data[0].ID,
-		Action:           stripe.String(string(stripe.UsageRecordActionIncrement)),
-		Quantity:         &quantity,
-	}
-
-	_, err = usagerecord.New(params)
-
-	return err
-}
-
-func visionToAnnotation(uri string, air *pb.AnnotateImageResponse) *images.ImageAnnotation {
+func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, annoErr error) *images.ImageAnnotation {
 	var err sql.NullString
-
-	if air.Error != nil {
-		err = sql.NullString{
-			String: fmt.Sprintf("Failed to annotate image: %s with error: %s", uri, air.Error),
-			Valid:  true,
-		}
+	if annoErr != nil {
+		err = sql.NullString{String: annoErr.Error(), Valid: true}
 	} else {
 		err = sql.NullString{String: "", Valid: false}
 	}
 
-	if air.SafeSearchAnnotation != nil {
+	if safeSearchAnno != nil {
 		return &images.ImageAnnotation{
 			Hash:      utils.Hash(uri),
 			URI:       uri,
-			DateAdded: time.Now(),
-			Adult:     int16(air.SafeSearchAnnotation.Adult),
-			Spoof:     int16(air.SafeSearchAnnotation.Spoof),
-			Medical:   int16(air.SafeSearchAnnotation.Medical),
-			Violence:  int16(air.SafeSearchAnnotation.Violence),
-			Racy:      int16(air.SafeSearchAnnotation.Racy),
 			Error:     err,
+			DateAdded: time.Now(),
+			Adult:     int16(safeSearchAnno.Adult),
+			Spoof:     int16(safeSearchAnno.Spoof),
+			Medical:   int16(safeSearchAnno.Medical),
+			Violence:  int16(safeSearchAnno.Violence),
+			Racy:      int16(safeSearchAnno.Racy),
 		}
-
-	}
-
-	return &images.ImageAnnotation{
-		Hash:      utils.Hash(uri),
-		URI:       uri,
-		DateAdded: time.Now(),
-		Adult:     0,
-		Spoof:     0,
-		Medical:   0,
-		Violence:  0,
-		Racy:      0,
-		Error:     err,
-	}
-}
-
-func cacheAnnotation(anno *images.ImageAnnotation) error {
-	if err := images.Insert(conn, anno); err != nil {
-		return err
 	} else {
-		logger.Debug().Msgf("Adding %s to DB cache", anno.URI)
-		return nil
+		return &images.ImageAnnotation{
+			Hash:      utils.Hash(uri),
+			URI:       uri,
+			Error:     err,
+			DateAdded: time.Now(),
+			Adult:     0,
+			Spoof:     0,
+			Medical:   0,
+			Violence:  0,
+			Racy:      0,
+		}
 	}
 }
 
@@ -194,24 +119,33 @@ func cacheAnnotations(annos []*images.ImageAnnotation) error {
 	return nil
 }
 
-func fetchAndReadFile(uri string) (string, string, error) {
-	path, err := utils.Download(uri)
+// func cacheAnnotation(anno *images.ImageAnnotation) error {
+// 	if err := images.Insert(conn, anno); err != nil {
+// 		return err
+// 	} else {
+// 		logger.Debug().Msgf("Adding %s to DB cache", anno.URI)
+// 		return nil
+// 	}
+// }
 
-	// If the download fails, log the error and skip to the next download.
-	if err != nil {
-		return "", "", err
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return "", "", err
-	}
-	defer f.Close()
+// func fetchAndReadFile(uri string) (string, string, error) {
+// 	path, err := utils.Download(uri)
 
-	r := bufio.NewReader(f)
-	content, err := ioutil.ReadAll(r)
-	if err != nil {
-		return "", "", err
-	}
+// 	// If the download fails, log the error and skip to the next download.
+// 	if err != nil {
+// 		return "", "", err
+// 	}
+// 	f, err := os.Open(path)
+// 	if err != nil {
+// 		return "", "", err
+// 	}
+// 	defer f.Close()
 
-	return path, utils.Hash(base64.StdEncoding.EncodeToString(content)), nil
-}
+// 	r := bufio.NewReader(f)
+// 	content, err := ioutil.ReadAll(r)
+// 	if err != nil {
+// 		return "", "", err
+// 	}
+
+// 	return path, utils.Hash(base64.StdEncoding.EncodeToString(content)), nil
+// }

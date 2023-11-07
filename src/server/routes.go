@@ -15,20 +15,20 @@ var PrintSomethingWrong = func(w http.ResponseWriter) { fmt.Fprint(w, "Something
 func (s *Serve) Init(port int, _conn *pg.DB) {
 	// Store the database connection in a global var.
 	conn = _conn
-	pgStore = NewPGStore(conn)
+	licenseStore = NewLicenseStore(conn)
 
 	r := mux.NewRouter()
 
 	r.Use(addCorsHeaders)
 	r.Handle("/", http.FileServer(http.Dir("./"))).Methods("GET")
 	r.HandleFunc("/health", health).Methods("GET", "OPTIONS")
-	r.HandleFunc("/license/{id}", getLicense).Methods("GET")
+	r.HandleFunc("/license/{id}", handleGetLicense).Methods("GET")
 	r.HandleFunc("/webhook", handleWebhook).Methods("POST")
 	r.HandleFunc("/trial-register", handleTrialRegister).Methods("POST", "OPTIONS")
 
 	// Paywalled filter routes.
 	filterR := r.PathPrefix("/filter").Subrouter()
-	filterR.Use(paywallMiddleware(pgStore))
+	filterR.Use(paywallMiddleware(licenseStore))
 	filterR.HandleFunc("/batch", handleBatchFilter(logger)).Methods("POST", "OPTIONS")
 
 	listenAddr = fmt.Sprintf("%s:%d", listenAddr, port)

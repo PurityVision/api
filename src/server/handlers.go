@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 	"github.com/stripe/stripe-go/v74"
+	"github.com/stripe/stripe-go/v74/customer"
 	"github.com/stripe/stripe-go/v74/webhook"
 )
 
@@ -107,7 +108,6 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// endpointSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 	endpointSecret := config.StripeWebhookSecret
 	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"), endpointSecret)
 
@@ -133,7 +133,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		stripeID := session.Customer.ID
 		email := session.CustomerDetails.Email
 
-		license, err := pgStore.GetLicenseByStripeID(stripeID)
+		license, err := licenseStore.GetLicenseByStripeID(stripeID)
 		if err != nil {
 			logger.Debug().Msgf("Error fetching license: %v", err)
 			PrintSomethingWrong(w)
@@ -145,7 +145,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		if license != nil {
 			logger.Debug().Msg("Existing license found, ensuring IsValid is true")
 			license.IsValid = true
-			if err := pgStore.UpdateLicense(license); err != nil {
+			if err := licenseStore.UpdateLicense(license); err != nil {
 				PrintSomethingWrong(w)
 				w.WriteHeader(http.StatusInternalServerError)
 			}
@@ -164,10 +164,26 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			StripeID:       stripeID,
 			SubscriptionID: subscriptionID,
 			IsValid:        true,
+			ValidityReason: "",
+			RequestCount:   0,
 		}
 
 		if _, err = conn.Model(license).Insert(); err != nil {
 			logger.Debug().Msgf("error creating: %v", err)
+			PrintSomethingWrong(w)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		stripe.Key = config.StripeKey
+		metadata := map[string]string{
+			"license": licenseID,
+		}
+		if _, err := customer.Update(session.Customer.ID, &stripe.CustomerParams{
+			Params: stripe.Params{
+				Metadata: metadata,
+			},
+		}); err != nil {
+			fmt.Fprintf(w, "error adding license to customer metadata: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -187,7 +203,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		license, err := pgStore.GetLicenseByStripeID(sub.Customer.ID)
+		license, err := licenseStore.GetLicenseByStripeID(sub.Customer.ID)
 		if err != nil {
 			logger.Debug().Msgf("error finding license for valid subscriber: %v", err)
 		}
@@ -199,13 +215,15 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		if sub.CancellationDetails.Reason != "" {
 			license.IsValid = false
+			license.ValidityReason = fmt.Sprintf("subscription was cancelled: %s", sub.CancellationDetails.Reason)
 			logger.Debug().Msgf("invalidated license: %s", license.ID)
 		} else {
 			license.IsValid = true
+			license.ValidityReason = ""
 			logger.Debug().Msgf("activated license: %s", license.ID)
 		}
 
-		if err = pgStore.UpdateLicense(license); err != nil {
+		if err = licenseStore.UpdateLicense(license); err != nil {
 			logger.Debug().Msgf("error updating license: %v", err)
 			PrintSomethingWrong(w)
 			return
@@ -217,13 +235,13 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func getLicense(w http.ResponseWriter, req *http.Request) {
+func handleGetLicense(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	licenseID := vars["id"]
 
 	logger.Debug().Msgf("verifying license: %s", licenseID)
 
-	license, err := pgStore.GetLicenseByID(licenseID)
+	license, err := licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
 		logger.Error().Msgf("failed to get license: %s", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -238,7 +256,6 @@ func getLicense(w http.ResponseWriter, req *http.Request) {
 	// }
 
 	json.NewEncoder(w).Encode(license)
-	w.WriteHeader(http.StatusOK)
 }
 
 type TrialRegisterReq struct {
@@ -260,7 +277,7 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	license, err := pgStore.GetLicenseByEmail(trialReq.Email)
+	license, err := licenseStore.GetLicenseByEmail(trialReq.Email)
 	if err != nil {
 		logger.Debug().Msgf("failed to fetch license by email: %s", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -288,10 +305,12 @@ func RegisterNewUser(email string) error {
 	logger.Debug().Msgf("generated license: %s", licenseID)
 
 	license := &lic.License{
-		ID:       licenseID,
-		Email:    email,
-		StripeID: "trial",
-		IsValid:  true,
+		ID:             licenseID,
+		Email:          email,
+		StripeID:       "trial",
+		IsValid:        true,
+		ValidityReason: "",
+		RequestCount:   0,
 	}
 
 	if _, err := conn.Model(license).Insert(); err != nil {

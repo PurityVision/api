@@ -123,16 +123,17 @@ func TestMain(m *testing.M) {
 func TestFilterHandlerTable(t *testing.T) {
 	t.Cleanup(testCleanup)
 
-	pgStore = NewPGStore(conn)
+	licenseStore = NewLicenseStore(conn)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	license := &lic.License{
-		ID:       testLicenseID,
-		Email:    "test@email.com",
-		StripeID: "stripe id",
-		IsValid:  true,
+		ID:             testLicenseID,
+		Email:          "test@email.com",
+		StripeID:       "stripe id",
+		IsValid:        true,
+		ValidityReason: "",
 	}
 
 	if _, err = conn.Model(license).Insert(); err != nil {

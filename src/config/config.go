@@ -53,6 +53,9 @@ var (
 
 	// From address for email license delivery.
 	EmailFrom string
+
+	// TrialLicenseMaxUsage is the maximum image filters for a trial license.
+	TrialLicenseMaxUsage int = 1000
 )
 
 func Init() error {

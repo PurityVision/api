@@ -3,40 +3,76 @@ package vision
 import (
 	"context"
 	"os"
+	"purity-vision-filter/src"
+	"purity-vision-filter/src/config"
+	"purity-vision-filter/src/license"
 
 	vision "cloud.google.com/go/vision/apiv1"
+	"github.com/rs/zerolog/log"
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
 type BatchAnnotateResponse map[string]*pb.AnnotateImageResponse
 
-func BatchGetImgAnnotation(uris []string) (*pb.BatchAnnotateImagesResponse, error) {
+// GetImgSSas returns the SafeSearchAnnotations and any associated errors given uris, and an optional application error.
+func GetImgSSAs(uris []string, license *license.License, store license.LicenseStore) ([]*pb.SafeSearchAnnotation, []error, error) {
 	ctx := context.Background()
 	client, err := vision.NewImageAnnotatorClient(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer client.Close()
 
-	requests := make([]*pb.AnnotateImageRequest, 0)
+	res := make([]*pb.SafeSearchAnnotation, 0)
+	errs := make([]error, 0)
+	requestCount := 0
+	remainingUsage := 0
+	if license.IsTrial {
+		remainingUsage = config.TrialLicenseMaxUsage - license.RequestCount
+	}
 
 	for _, uri := range uris {
-		requests = append(requests, &pb.AnnotateImageRequest{
-			Image: vision.NewImageFromURI(uri),
-			Features: []*pb.Feature{
-				{Type: pb.Feature_SAFE_SEARCH_DETECTION, MaxResults: 5},
-			},
-		})
+		var ssa *pb.SafeSearchAnnotation
+
+		if license.IsTrial && remainingUsage <= 0 {
+			log.Logger.Debug().Msgf("skipping %s because trial license is expired", uri)
+			if license.ValidityReason == "" {
+				log.Logger.Debug().Msgf("trial license %s has reached max usage", license.ID)
+				license.ValidityReason = "trial license has expired"
+				if err = store.UpdateLicense(license); err != nil {
+					log.Logger.Debug().Msgf("failed to mark trial license as expired: %s", err.Error())
+				}
+			}
+			ssa = nil
+			errs = append(errs, nil)
+		} else {
+			ssa, err = client.DetectSafeSearch(ctx, vision.NewImageFromURI(uri), nil)
+			remainingUsage-- // only applicable for trial licenses
+			requestCount++
+			if err != nil {
+				log.Logger.Error().Msgf("failed to safe search detect image: %s, err: %s", uris, err.Error())
+				errs = append(errs, err)
+			} else {
+				errs = append(errs, nil)
+			}
+		}
+
+		res = append(res, ssa)
 	}
 
-	req := &pb.BatchAnnotateImagesRequest{Requests: requests}
+	if requestCount > 0 {
+		license.RequestCount += requestCount
+		if err = store.UpdateLicense(license); err != nil {
+			log.Logger.Debug().Msgf("failed to update license request count: %s", err.Error())
+		}
 
-	res, err := client.BatchAnnotateImages(ctx, req)
-	if err != nil {
-		return nil, err
+		if err = src.IncrementSubscriptionMeter(license, int64(requestCount)); err != nil {
+			log.Logger.Debug().Msgf("failed to update stripe subscription usage: %s", err.Error())
+		}
+
 	}
 
-	return res, nil
+	return res, errs, nil
 }
 
 // GetImgAnnotation annotates an image.

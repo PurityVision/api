@@ -19,16 +19,16 @@ var listenAddr string = ""
 // Store the db connection passed from main.go.
 var conn *pg.DB
 
-type PGStore struct {
+type LicenseStore struct {
 	db *pg.DB
 }
 
-func NewPGStore(db *pg.DB) *PGStore {
-	return &PGStore{db: db}
+func NewLicenseStore(db *pg.DB) *LicenseStore {
+	return &LicenseStore{db: db}
 }
 
 // GetLicenseByID fetches a license from DB by license ID
-func (store *PGStore) GetLicenseByID(id string) (*lic.License, error) {
+func (store *LicenseStore) GetLicenseByID(id string) (*lic.License, error) {
 	license := new(lic.License)
 	err := store.db.Model(license).Where("id = ?", id).Select()
 	if err != nil {
@@ -40,7 +40,7 @@ func (store *PGStore) GetLicenseByID(id string) (*lic.License, error) {
 	return license, nil
 }
 
-func (store *PGStore) GetLicenseByStripeID(stripeID string) (*lic.License, error) {
+func (store *LicenseStore) GetLicenseByStripeID(stripeID string) (*lic.License, error) {
 	license := new(lic.License)
 	err := store.db.Model(license).Where("stripe_id = ?", stripeID).Select()
 	if err != nil {
@@ -52,12 +52,12 @@ func (store *PGStore) GetLicenseByStripeID(stripeID string) (*lic.License, error
 	return license, nil
 }
 
-func (store *PGStore) UpdateLicense(license *lic.License) error {
+func (store *LicenseStore) UpdateLicense(license *lic.License) error {
 	_, err := store.db.Model(license).Where("id = ?", license.ID).Update(license)
 	return err
 }
 
-func (store *PGStore) GetLicenseByEmail(email string) (*lic.License, error) {
+func (store *LicenseStore) GetLicenseByEmail(email string) (*lic.License, error) {
 	license := new(lic.License)
 	err := store.db.Model(license).Where("email = ?", email).Select()
 	if err != nil {
@@ -69,7 +69,7 @@ func (store *PGStore) GetLicenseByEmail(email string) (*lic.License, error) {
 	return license, nil
 }
 
-var pgStore *PGStore
+var licenseStore *LicenseStore
 
 var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 

@@ -10,8 +10,8 @@ require (
 	github.com/rs/zerolog v1.20.0
 	github.com/sendgrid/sendgrid-go v3.12.0+incompatible
 	github.com/stripe/stripe-go/v74 v74.28.0
-	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
-	google.golang.org/api v0.70.0
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
+	google.golang.org/api v0.70.0 // indirect
 	google.golang.org/genproto v0.0.0-20220222213610-43724f9ea8cf
 )
 
@@ -24,7 +24,7 @@ require (
 	github.com/google/go-cmp v0.5.7 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
+	github.com/joho/godotenv v1.5.1
 	github.com/sendgrid/rest v2.6.9+incompatible // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/vmihailenco/bufpool v0.1.11 // indirect
