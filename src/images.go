@@ -1,15 +1,27 @@
-package images
+package src
 
 import (
+	"database/sql"
 	"fmt"
-	"os"
+	"time"
 
 	"github.com/go-pg/pg/v10"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+type ImageAnnotation struct {
+	Hash      string         `json:"hash"`  // Sha254 hash of the base64 encoded contents of the image.
+	URI       string         `json:"uri"`   // The original URI where the image resides on the web.
+	Error     sql.NullString `json:"error"` // Any error returned when trying to filter the image.
+	DateAdded time.Time      `json:"dateAdded"`
+
+	// from SafeSearchAnnotation fields
+	Adult    int16 `json:"adult"`
+	Spoof    int16 `json:"spoof"`
+	Medical  int16 `json:"medical"`
+	Violence int16 `json:"violence"`
+	Racy     int16 `json:"racy"`
+}
 
 // FindByURI returns an image with the matching URI.
 func FindByURI(conn *pg.DB, imgURI string) (*ImageAnnotation, error) {

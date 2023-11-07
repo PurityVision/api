@@ -1,23 +1,18 @@
-package images
+package src
 
 import (
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/db"
-	"purity-vision-filter/src/utils"
 	"testing"
 	"time"
 
-	"github.com/go-pg/pg/v10"
 	"github.com/joho/godotenv"
 )
 
-var conn *pg.DB
-var tx *pg.Tx
-var err error
+// var conn *pg.DB
+var testErr error
 var imgURIList = []string{
 	"https://hatrabbits.com/wp-content/uploads/2017/01/random.jpg",
 	"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT1ZgCJADylizZLNnOnyuhtwR2qVk5yOi0UoQ&usqp=CAU",
@@ -25,15 +20,15 @@ var imgURIList = []string{
 }
 
 func TestMain(m *testing.M) {
-	if err := godotenv.Load("../../.env"); err != nil {
+	if err := godotenv.Load("../.env"); err != nil {
 		log.Fatal(err)
 	}
-	config.Init()
+	InitConfig()
 
 	fmt.Println("Got value: ", os.Getenv("PURITY_DB_HOST"))
-	conn, err = db.Init(config.DefaultDBTestName)
-	if err != nil {
-		log.Fatal(err)
+	conn, testErr = InitDB(DefaultDBTestName)
+	if testErr != nil {
+		log.Fatal(testErr)
 	}
 
 	exitCode := m.Run()
@@ -43,7 +38,7 @@ func TestMain(m *testing.M) {
 
 func TestInsertImage(t *testing.T) {
 	for _, uri := range imgURIList {
-		fakeHash := utils.Hash(uri)
+		fakeHash := Hash(uri)
 		anno := &ImageAnnotation{
 			Hash:      fakeHash,
 			URI:       uri,
@@ -55,9 +50,9 @@ func TestInsertImage(t *testing.T) {
 			Violence:  0,
 			Racy:      0,
 		}
-		err = Insert(conn, anno)
-		if err != nil {
-			t.Fatal(err.Error())
+		testErr = Insert(conn, anno)
+		if testErr != nil {
+			t.Fatal(testErr.Error())
 		}
 	}
 }
@@ -76,7 +71,7 @@ func TestFindImagesByURI(t *testing.T) {
 	}
 
 	smallURIList = []string{}
-	imgList, err = FindAnnotationsByURI(conn, smallURIList)
+	_, err = FindAnnotationsByURI(conn, smallURIList)
 	if err == nil {
 		t.Fatal("Expected FindImagesByURI to return an error because imgURIList cannot be empty")
 	}
@@ -84,9 +79,9 @@ func TestFindImagesByURI(t *testing.T) {
 
 func TestDeleteImagesByURI(t *testing.T) {
 	for _, uri := range imgURIList {
-		err = DeleteByURI(conn, uri)
-		if err != nil {
-			t.Fatal(err)
+		testErr = DeleteByURI(conn, uri)
+		if testErr != nil {
+			t.Fatal(testErr)
 		}
 	}
 }

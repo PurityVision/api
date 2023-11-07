@@ -1,18 +1,13 @@
-package db
+package src
 
 import (
 	"context"
 	"fmt"
-	"os"
-	"purity-vision-filter/src/config"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/go-pg/pg/v10"
 )
-
-var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
 // User represents a user in the Purity system.
 type User struct {
@@ -21,16 +16,16 @@ type User struct {
 	Password string `json:"password"`
 }
 
-// Init intializes and returns a postgres database connection object.
-func Init(dbName string) (*pg.DB, error) {
-	dbHost := config.DBHost
-	dbPort := config.DBPort
+// InitDB intializes and returns a postgres database connection object.
+func InitDB(dbName string) (*pg.DB, error) {
+	dbHost := DBHost
+	dbPort := DBPort
 	dbAddr := fmt.Sprintf("%s:%s", dbHost, dbPort)
 	if dbName == "" {
-		dbName = config.DBName
+		dbName = DBName
 	}
-	dbUser := config.DBUser
-	dbPassword := config.DBPassword
+	dbUser := DBUser
+	dbPassword := DBPassword
 
 	if dbPassword == "" {
 		return nil, fmt.Errorf("missing postgres password. Export \"PURITY_DB_PASS=<your_password>\"")
@@ -67,9 +62,10 @@ func (h loggerHook) BeforeQuery(ctx context.Context, evt *pg.QueryEvent) (contex
 
 	if evt.Err != nil {
 		log.Debug().Msgf("%s executing a query:\n%s\n", evt.Err, q)
-	} else {
-		// log.Debug().Msg(string(q))
 	}
+	// else {
+	// 	// log.Debug().Msg(string(q))
+	// }
 
 	return ctx, nil
 }

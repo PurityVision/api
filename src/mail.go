@@ -1,8 +1,7 @@
-package mail
+package src
 
 import (
 	"fmt"
-	"purity-vision-filter/src/config"
 
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
@@ -17,10 +16,10 @@ type Email struct {
 }
 
 func SendMail(email Email) error {
-	from := mail.NewEmail(config.EmailName, config.EmailFrom)
+	from := mail.NewEmail(EmailName, EmailFrom)
 	to := mail.NewEmail(email.Name, email.To)
 	message := mail.NewSingleEmail(from, email.Subject, to, email.Plain, email.Html)
-	client := sendgrid.NewSendClient(config.SendgridAPIKey)
+	client := sendgrid.NewSendClient(SendgridAPIKey)
 
 	_, err := client.Send(message)
 	if err != nil {

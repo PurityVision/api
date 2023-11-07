@@ -1,4 +1,4 @@
-package license
+package src
 
 type License struct {
 	ID             string `json:"id"`
@@ -11,7 +11,7 @@ type License struct {
 	IsTrial        bool   `json:"isTrial"`
 }
 
-type LicenseStore interface {
+type licenseStoreInterface interface {
 	GetLicenseByID(id string) (*License, error)
 	GetLicenseByStripeID(id string) (*License, error)
 	UpdateLicense(license *License) error

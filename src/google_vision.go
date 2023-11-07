@@ -1,11 +1,7 @@
-package vision
+package src
 
 import (
 	"context"
-	"os"
-	"purity-vision-filter/src"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/license"
 
 	vision "cloud.google.com/go/vision/apiv1"
 	"github.com/rs/zerolog/log"
@@ -15,7 +11,7 @@ import (
 type BatchAnnotateResponse map[string]*pb.AnnotateImageResponse
 
 // GetImgSSas returns the SafeSearchAnnotations and any associated errors given uris, and an optional application error.
-func GetImgSSAs(uris []string, license *license.License, store license.LicenseStore) ([]*pb.SafeSearchAnnotation, []error, error) {
+func GetImgSSAs(uris []string, license *License, store licenseStoreInterface) ([]*pb.SafeSearchAnnotation, []error, error) {
 	ctx := context.Background()
 	client, err := vision.NewImageAnnotatorClient(ctx)
 	if err != nil {
@@ -28,7 +24,7 @@ func GetImgSSAs(uris []string, license *license.License, store license.LicenseSt
 	requestCount := 0
 	remainingUsage := 0
 	if license.IsTrial {
-		remainingUsage = config.TrialLicenseMaxUsage - license.RequestCount
+		remainingUsage = TrialLicenseMaxUsage - license.RequestCount
 	}
 
 	for _, uri := range uris {
@@ -66,7 +62,7 @@ func GetImgSSAs(uris []string, license *license.License, store license.LicenseSt
 			log.Logger.Debug().Msgf("failed to update license request count: %s", err.Error())
 		}
 
-		if err = src.IncrementSubscriptionMeter(license, int64(requestCount)); err != nil {
+		if err = IncrementSubscriptionMeter(license, int64(requestCount)); err != nil {
 			log.Logger.Debug().Msgf("failed to update stripe subscription usage: %s", err.Error())
 		}
 
@@ -111,43 +107,4 @@ func GetImgAnnotation(uri string) (*pb.AnnotateImageResponse, error) {
 	}
 
 	return res, nil
-}
-
-// findLabels gets labels from the Vision API for an image at the given file path.
-func findLabels(file string) ([]string, error) {
-	// [START init]
-	ctx := context.Background()
-
-	// Create the client.
-	client, err := vision.NewImageAnnotatorClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-	// [END init]
-
-	// [START request]
-	// Open the file.
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	image, err := vision.NewImageFromReader(f)
-	if err != nil {
-		return nil, err
-	}
-
-	// Perform the request.
-	annotations, err := client.DetectLabels(ctx, image, nil, 10)
-	if err != nil {
-		return nil, err
-	}
-	// [END request]
-	// [START transform]
-	var labels []string
-	for _, annotation := range annotations {
-		labels = append(labels, annotation.Description)
-	}
-	return labels, nil
-	// [END transform]
 }

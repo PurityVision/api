@@ -1,19 +1,16 @@
-package server
+package src
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"purity-vision-filter/src/images"
-	"purity-vision-filter/src/utils"
-	"purity-vision-filter/src/vision"
 	"time"
 
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
-func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, error) {
-	var res []*images.ImageAnnotation
+func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
+	var res []*ImageAnnotation
 	license, err := licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
@@ -22,7 +19,7 @@ func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, e
 		return nil, errors.New("license not found")
 	}
 
-	cachedSSAs, err := images.FindAnnotationsByURI(conn, uris)
+	cachedSSAs, err := FindAnnotationsByURI(conn, uris)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +43,12 @@ func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, e
 
 	uris = noncachedURIs
 
-	safeSearchAnnotations, errs, err := vision.GetImgSSAs(uris, license, licenseStore)
+	safeSearchAnnotations, errs, err := GetImgSSAs(uris, license, licenseStore)
 	if err != nil {
 		return nil, err
 	}
 
-	imageAnnotations := make([]*images.ImageAnnotation, 0)
+	imageAnnotations := make([]*ImageAnnotation, 0)
 	for i, safeSearchAnnotation := range safeSearchAnnotations {
 		if safeSearchAnnotation == nil {
 			continue
@@ -72,7 +69,7 @@ func filterImages(uris []string, licenseID string) ([]*images.ImageAnnotation, e
 	return res, nil
 }
 
-func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, annoErr error) *images.ImageAnnotation {
+func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, annoErr error) *ImageAnnotation {
 	var err sql.NullString
 	if annoErr != nil {
 		err = sql.NullString{String: annoErr.Error(), Valid: true}
@@ -81,8 +78,8 @@ func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, ann
 	}
 
 	if safeSearchAnno != nil {
-		return &images.ImageAnnotation{
-			Hash:      utils.Hash(uri),
+		return &ImageAnnotation{
+			Hash:      Hash(uri),
 			URI:       uri,
 			Error:     err,
 			DateAdded: time.Now(),
@@ -93,8 +90,8 @@ func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, ann
 			Racy:      int16(safeSearchAnno.Racy),
 		}
 	} else {
-		return &images.ImageAnnotation{
-			Hash:      utils.Hash(uri),
+		return &ImageAnnotation{
+			Hash:      Hash(uri),
 			URI:       uri,
 			Error:     err,
 			DateAdded: time.Now(),
@@ -107,8 +104,8 @@ func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, ann
 	}
 }
 
-func cacheAnnotations(annos []*images.ImageAnnotation) error {
-	if err := images.InsertAll(conn, annos); err != nil {
+func cacheAnnotations(annos []*ImageAnnotation) error {
+	if err := InsertAll(conn, annos); err != nil {
 		return err
 	}
 

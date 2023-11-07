@@ -1,4 +1,4 @@
-package server
+package src
 
 import (
 	"encoding/json"
@@ -7,12 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/images"
-	"purity-vision-filter/src/mail"
-	"purity-vision-filter/src/utils"
-
-	lic "purity-vision-filter/src/license"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
@@ -60,7 +54,7 @@ func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *h
 			return
 		}
 
-		var res []*images.ImageAnnotation
+		var res []*ImageAnnotation
 
 		uris := removeDuplicates(filterReqPayload.ImgURIList)
 
@@ -108,7 +102,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	endpointSecret := config.StripeWebhookSecret
+	endpointSecret := StripeWebhookSecret
 	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"), endpointSecret)
 
 	if err != nil {
@@ -155,10 +149,10 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		// else create new license and store in db
 		logger.Debug().Msg("No license found. Creating one")
-		licenseID := utils.GenerateLicenseKey()
+		licenseID := GenerateLicenseKey()
 		logger.Debug().Msgf("Generated license: %s", licenseID)
 
-		license = &lic.License{
+		license = &License{
 			ID:             licenseID,
 			Email:          email,
 			StripeID:       stripeID,
@@ -174,7 +168,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
-		stripe.Key = config.StripeKey
+		stripe.Key = StripeKey
 		metadata := map[string]string{
 			"license": licenseID,
 		}
@@ -188,7 +182,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
-		if err = mail.SendLicenseMail(license.Email, license.ID); err != nil {
+		if err = SendLicenseMail(license.Email, license.ID); err != nil {
 			// TODO: retry sending email so user can get their license.
 			logger.Debug().Msgf("error sending license email: %v", err)
 			PrintSomethingWrong(w)
@@ -301,10 +295,10 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 }
 
 func RegisterNewUser(email string) error {
-	licenseID := utils.GenerateLicenseKey()
+	licenseID := GenerateLicenseKey()
 	logger.Debug().Msgf("generated license: %s", licenseID)
 
-	license := &lic.License{
+	license := &License{
 		ID:             licenseID,
 		Email:          email,
 		StripeID:       "trial",
@@ -318,7 +312,7 @@ func RegisterNewUser(email string) error {
 		return err
 	}
 
-	if err := mail.SendLicenseMail(license.Email, license.ID); err != nil {
+	if err := SendLicenseMail(license.Email, license.ID); err != nil {
 		// TODO: retry sending email so user can get their license.
 		logger.Debug().Msgf("error sending license email: %v", err)
 		return err

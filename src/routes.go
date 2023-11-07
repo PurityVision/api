@@ -1,4 +1,4 @@
-package server
+package src
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 var PrintSomethingWrong = func(w http.ResponseWriter) { fmt.Fprint(w, "Something went wrong") }
 
 // Init intializes the Serve instance and exposes it based on the port parameter.
-func (s *Serve) Init(port int, _conn *pg.DB) {
+func (s *Serve) InitServer(port int, _conn *pg.DB) {
 	// Store the database connection in a global var.
 	conn = _conn
 	licenseStore = NewLicenseStore(conn)

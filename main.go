@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"os"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/db"
-	"purity-vision-filter/src/server"
+	"purity-vision-filter/src"
 	"strconv"
 
 	"github.com/joho/godotenv"
@@ -20,14 +18,14 @@ func main() {
 		log.Fatal().Err(err)
 	}
 
-	if err := config.Init(); err != nil {
+	if err := src.InitConfig(); err != nil {
 		log.Fatal().Msg(err.Error())
 	}
 
-	flag.IntVar(&portFlag, "port", config.DefaultPort, "port to run the service on")
+	flag.IntVar(&portFlag, "port", src.DefaultPort, "port to run the service on")
 	flag.Parse()
 
-	logLevel, err := strconv.Atoi(config.LogLevel)
+	logLevel, err := strconv.Atoi(src.LogLevel)
 	if err != nil {
 		panic(err)
 	}
@@ -35,12 +33,12 @@ func main() {
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
-	conn, err := db.Init(config.DBName)
+	conn, err := src.InitDB(src.DBName)
 	if err != nil {
 		log.Fatal().Msg(err.Error())
 	}
 	defer conn.Close()
 
-	s := server.NewServe()
-	s.Init(portFlag, conn)
+	s := src.NewServe()
+	s.InitServer(portFlag, conn)
 }

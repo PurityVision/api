@@ -1,4 +1,4 @@
-package server
+package src
 
 import (
 	"bytes"
@@ -9,29 +9,20 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/db"
-	"purity-vision-filter/src/images"
-	lic "purity-vision-filter/src/license"
 	"testing"
 	"time"
-
-	"github.com/go-pg/pg/v10"
-	"github.com/joho/godotenv"
 )
 
-type TestServe struct {
-}
+const testLicenseID = "797e2754-7547-49c2-acfb-fa7b8357ab03"
 
-func (s *TestServe) Init(_conn *pg.DB) {
-	conn = _conn
-}
+var serverTestErr error
+
+type TestServe struct{}
 
 type FilterTestExpect struct {
 	Code  int
 	Error error
-	Res   []*images.ImageAnnotation
+	Res   []*ImageAnnotation
 }
 
 type FilterTest struct {
@@ -92,43 +83,23 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func testCleanup() {
-	conn.Model(&images.ImageAnnotation{}).Where("1=1").Delete()
-	_, err := conn.Model(&lic.License{}).Where("1=1").Delete()
+	conn.Model(&ImageAnnotation{}).Where("1=1").Delete()
+	_, err := conn.Model(&License{}).Where("1=1").Delete()
 	if err != nil {
 		fmt.Println("error: ", err)
 	}
 	defer conn.Close()
 }
 
-const testLicenseID = "797e2754-7547-49c2-acfb-fa7b8357ab03"
-
-var err error
-
-func TestMain(m *testing.M) {
-	if err := godotenv.Load("../../.env"); err != nil {
-		log.Fatal(err)
-	}
-	config.Init()
-
-	conn, err = db.Init(config.DefaultDBTestName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	exitCode := m.Run()
-
-	os.Exit(exitCode)
-}
-
 func TestFilterHandlerTable(t *testing.T) {
 	t.Cleanup(testCleanup)
 
 	licenseStore = NewLicenseStore(conn)
-	if err != nil {
-		log.Fatal(err)
+	if serverTestErr != nil {
+		log.Fatal(serverTestErr)
 	}
 
-	license := &lic.License{
+	license := &License{
 		ID:             testLicenseID,
 		Email:          "test@email.com",
 		StripeID:       "stripe id",
@@ -136,12 +107,9 @@ func TestFilterHandlerTable(t *testing.T) {
 		ValidityReason: "",
 	}
 
-	if _, err = conn.Model(license).Insert(); err != nil {
+	if _, serverTestErr = conn.Model(license).Insert(); serverTestErr != nil {
 		t.Error("failed to create test license")
 	}
-
-	s := TestServe{}
-	s.Init(conn)
 
 	tests := []FilterTest{
 		{
@@ -149,7 +117,7 @@ func TestFilterHandlerTable(t *testing.T) {
 			Expect: FilterTestExpect{
 				Code:  400,
 				Error: errors.New("ImgUriList cannot be empty"),
-				Res:   []*images.ImageAnnotation{},
+				Res:   []*ImageAnnotation{},
 			},
 		},
 		{
@@ -163,7 +131,7 @@ func TestFilterHandlerTable(t *testing.T) {
 			Expect: FilterTestExpect{
 				Code:  200,
 				Error: nil,
-				Res: []*images.ImageAnnotation{
+				Res: []*ImageAnnotation{
 					{
 						Hash:      "87408bebb6a1d42cd7cc1bbffb6d7dcc6aff14af4aea5c9af9fc5b624cf7c93a",
 						URI:       "https://i.imgur.com/FEpwOY8.jpg",
@@ -188,7 +156,7 @@ func TestFilterHandlerTable(t *testing.T) {
 			Expect: FilterTestExpect{
 				Code:  200,
 				Error: nil,
-				Res: []*images.ImageAnnotation{
+				Res: []*ImageAnnotation{
 					{
 						Hash:      "87408bebb6a1d42cd7cc1bbffb6d7dcc6aff14af4aea5c9af9fc5b624cf7c93a",
 						URI:       "https://i.imgur.com/FEpwOY8.jpg",
@@ -259,7 +227,7 @@ func TestFilterHandlerTable(t *testing.T) {
 		if rec.Code != test.Expect.Code {
 			t.Errorf("expected status %d but got %d", rec.Code, test.Expect.Code)
 		}
-		var annotations []*images.ImageAnnotation
+		var annotations []*ImageAnnotation
 		json.Unmarshal(rec.Body.Bytes(), &annotations)
 
 		if len(annotations) != len(test.Expect.Res) {

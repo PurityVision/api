@@ -1,4 +1,4 @@
-package config
+package src
 
 import (
 	"fmt"
@@ -58,7 +58,7 @@ var (
 	TrialLicenseMaxUsage int = 1000
 )
 
-func Init() error {
+func InitConfig() error {
 	DefaultPort = 8080
 
 	DBHost = getEnvWithDefault("PURITY_DB_HOST", "localhost")

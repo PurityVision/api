@@ -2,20 +2,18 @@ package src
 
 import (
 	"errors"
-	"purity-vision-filter/src/config"
-	"purity-vision-filter/src/license"
 
 	"github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/subscription"
 	"github.com/stripe/stripe-go/v74/usagerecord"
 )
 
-func IncrementSubscriptionMeter(lic *license.License, quantity int64) error {
-	if config.StripeKey == "" {
+func IncrementSubscriptionMeter(lic *License, quantity int64) error {
+	if StripeKey == "" {
 		return errors.New("STRIPE_KEY env var not found")
 	}
 
-	stripe.Key = config.StripeKey
+	stripe.Key = StripeKey
 
 	s, err := fetchStripeSubscription(lic)
 	if err != nil {
@@ -33,12 +31,12 @@ func IncrementSubscriptionMeter(lic *license.License, quantity int64) error {
 	return err
 }
 
-func fetchStripeSubscription(lic *license.License) (*stripe.Subscription, error) {
-	if config.StripeKey == "" {
+func fetchStripeSubscription(lic *License) (*stripe.Subscription, error) {
+	if StripeKey == "" {
 		return nil, errors.New("STRIPE_KEY env var not found")
 	}
 
-	stripe.Key = config.StripeKey
+	stripe.Key = StripeKey
 
 	sub, err := subscription.Get(lic.SubscriptionID, nil)
 	if err != nil {
