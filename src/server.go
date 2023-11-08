@@ -21,56 +21,6 @@ var licenseStore *LicenseStore
 
 var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
-type LicenseStore struct {
-	db *pg.DB
-}
-
-func NewLicenseStore(db *pg.DB) *LicenseStore {
-	return &LicenseStore{db: db}
-}
-
-// GetLicenseByID fetches a license from DB by license ID
-func (store *LicenseStore) GetLicenseByID(id string) (*License, error) {
-	license := new(License)
-	err := store.db.Model(license).Where("id = ?", id).Select()
-	if err != nil {
-		if err == pg.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return license, nil
-}
-
-func (store *LicenseStore) GetLicenseByStripeID(stripeID string) (*License, error) {
-	license := new(License)
-	err := store.db.Model(license).Where("stripe_id = ?", stripeID).Select()
-	if err != nil {
-		if err == pg.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return license, nil
-}
-
-func (store *LicenseStore) UpdateLicense(license *License) error {
-	_, err := store.db.Model(license).Where("id = ?", license.ID).Update(license)
-	return err
-}
-
-func (store *LicenseStore) GetLicenseByEmail(email string) (*License, error) {
-	license := new(License)
-	err := store.db.Model(license).Where("email = ?", email).Select()
-	if err != nil {
-		if err == pg.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return license, nil
-}
-
 // AnnotateReq is the form of an incoming JSON payload
 // for retrieving pass/fail status of each supplied image URI.
 type AnnotateReq struct {

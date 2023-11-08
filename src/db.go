@@ -64,7 +64,7 @@ func (h loggerHook) BeforeQuery(ctx context.Context, evt *pg.QueryEvent) (contex
 		log.Debug().Msgf("%s executing a query:\n%s\n", evt.Err, q)
 	}
 	// else {
-	// 	// log.Debug().Msg(string(q))
+	//	log.Debug().Msg(string(q))
 	// }
 
 	return ctx, nil

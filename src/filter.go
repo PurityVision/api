@@ -9,22 +9,15 @@ import (
 	pb "google.golang.org/genproto/googleapis/cloud/vision/v1"
 )
 
-func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
+// return URIs that are not cached in annotations
+func getCachedSSAs(uris []string) ([]*ImageAnnotation, []string, error) {
 	var res []*ImageAnnotation
-	license, err := licenseStore.GetLicenseByID(licenseID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
-	}
-	if license == nil {
-		return nil, errors.New("license not found")
-	}
-
 	cachedSSAs, err := FindAnnotationsByURI(conn, uris)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	noncachedURIs := make([]string, 0)
+	uncachedURIs := make([]string, 0)
 
 	for _, uri := range uris {
 		found := false
@@ -37,57 +30,99 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 			}
 		}
 		if !found {
-			noncachedURIs = append(noncachedURIs, uri)
+			uncachedURIs = append(uncachedURIs, uri)
 		}
 	}
 
-	uris = noncachedURIs
+	return res, uncachedURIs, nil
+}
 
-	safeSearchAnnotations, errs, err := GetImgSSAs(uris, license, licenseStore)
+func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
+	res, uris, err := getCachedSSAs(uris)
+	if err != nil {
+		return nil, err
+	}
+	if len(uris) == 0 {
+		return res, nil
+	}
+
+	license, err := licenseStore.GetLicenseByID(licenseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
+	}
+	if license == nil {
+		return nil, errors.New("license not found")
+	}
+	if license.IsTrial {
+		remainingUsage := TrialLicenseMaxUsage - license.RequestCount
+		if remainingUsage < len(uris) {
+			uris = uris[:remainingUsage]
+		}
+		if remainingUsage <= 0 { // return early if trial license is expired
+			license, err := licenseStore.ExpireTrial(license)
+			if err != nil {
+				return res, fmt.Errorf("failed to mark trial license as expired: %s", err.Error())
+			} else {
+				return res, fmt.Errorf("trial license %s has reached max usage and is now invalid", license.ID)
+			}
+		}
+	}
+	fmt.Println("filtering with URIs: ", uris)
+
+	annotateImageResponses, err := GetURIAnnotations(uris)
 	if err != nil {
 		return nil, err
 	}
 
-	imageAnnotations := make([]*ImageAnnotation, 0)
-	for i, safeSearchAnnotation := range safeSearchAnnotations {
-		if safeSearchAnnotation == nil {
+	if len(annotateImageResponses) > 0 {
+		license.RequestCount += len(annotateImageResponses)
+		if err = licenseStore.UpdateLicense(license); err != nil {
+			logger.Error().Msgf("failed to update license request count: %s", err)
+		}
+		if err := IncrementSubscriptionMeter(license, int64(len(annotateImageResponses))); err != nil {
+			logger.Error().Msgf("failed to update stripe subscription usage: %s", err.Error())
+		}
+	}
+
+	safeSearchAnnotationsRes := make([]*ImageAnnotation, 0)
+	for i, annotation := range annotateImageResponses {
+		if annotation == nil {
 			continue
 		}
 		uri := uris[i]
-		imageAnnotations = append(imageAnnotations, visionToAnnotation(uri, safeSearchAnnotation, errs[i]))
+		safeSearchAnnotationsRes = append(safeSearchAnnotationsRes, annotationToSafeSearchResponseRes(uri, annotation))
 	}
-	res = append(res, imageAnnotations...)
+	res = append(res, safeSearchAnnotationsRes...)
 
-	err = cacheAnnotations(imageAnnotations)
+	err = cacheAnnotations(safeSearchAnnotationsRes)
 	if err != nil {
-		logger.Debug().Msgf("failed to cache with uris: %v", uris)
-		return nil, err
+		logger.Error().Msgf("failed to cache with uris: %v", uris)
 	}
 
-	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(safeSearchAnnotations))
+	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(annotateImageResponses))
 
 	return res, nil
 }
 
-func visionToAnnotation(uri string, safeSearchAnno *pb.SafeSearchAnnotation, annoErr error) *ImageAnnotation {
+func annotationToSafeSearchResponseRes(uri string, annotation *pb.AnnotateImageResponse) *ImageAnnotation {
 	var err sql.NullString
-	if annoErr != nil {
-		err = sql.NullString{String: annoErr.Error(), Valid: true}
+	if annotation.Error != nil {
+		err = sql.NullString{String: annotation.Error.Message, Valid: true}
 	} else {
 		err = sql.NullString{String: "", Valid: false}
 	}
 
-	if safeSearchAnno != nil {
+	if annotation != nil {
 		return &ImageAnnotation{
 			Hash:      Hash(uri),
 			URI:       uri,
 			Error:     err,
 			DateAdded: time.Now(),
-			Adult:     int16(safeSearchAnno.Adult),
-			Spoof:     int16(safeSearchAnno.Spoof),
-			Medical:   int16(safeSearchAnno.Medical),
-			Violence:  int16(safeSearchAnno.Violence),
-			Racy:      int16(safeSearchAnno.Racy),
+			Adult:     int16(annotation.SafeSearchAnnotation.Adult),
+			Spoof:     int16(annotation.SafeSearchAnnotation.Spoof),
+			Medical:   int16(annotation.SafeSearchAnnotation.Medical),
+			Violence:  int16(annotation.SafeSearchAnnotation.Violence),
+			Racy:      int16(annotation.SafeSearchAnnotation.Racy),
 		}
 	} else {
 		return &ImageAnnotation{
