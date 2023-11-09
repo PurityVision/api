@@ -112,7 +112,7 @@ func annotationToSafeSearchResponseRes(uri string, annotation *pb.AnnotateImageR
 		err = sql.NullString{String: "", Valid: false}
 	}
 
-	if annotation != nil {
+	if annotation != nil && annotation.SafeSearchAnnotation != nil {
 		return &ImageAnnotation{
 			Hash:      Hash(uri),
 			URI:       uri,
