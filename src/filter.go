@@ -25,7 +25,7 @@ func getCachedSSAs(uris []string) ([]*ImageAnnotation, []string, error) {
 			if cachedSSA.URI == uri {
 				res = append(res, &cachedSSA)
 				found = true
-				logger.Debug().Msgf("Found cached image: %s", uri)
+				logger.Info().Msgf("found cached image: %s", uri)
 				break
 			}
 		}
@@ -67,7 +67,6 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 			}
 		}
 	}
-	fmt.Println("filtering with URIs: ", uris)
 
 	annotateImageResponses, err := GetURIAnnotations(uris)
 	if err != nil {
@@ -84,22 +83,37 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 		}
 	}
 
-	safeSearchAnnotationsRes := make([]*ImageAnnotation, 0)
-	for i, annotation := range annotateImageResponses {
-		if annotation == nil {
-			continue
+	var buildSSARes = func(annotations []*pb.AnnotateImageResponse) []*ImageAnnotation {
+		var res []*ImageAnnotation
+		for i, annotation := range annotations {
+			if annotation == nil {
+				continue
+			}
+			uri := uris[i]
+			res = append(res, annotationToSafeSearchResponseRes(uri, annotation))
 		}
-		uri := uris[i]
-		safeSearchAnnotationsRes = append(safeSearchAnnotationsRes, annotationToSafeSearchResponseRes(uri, annotation))
+		return res
 	}
+
+	safeSearchAnnotationsRes := buildSSARes(annotateImageResponses)
 	res = append(res, safeSearchAnnotationsRes...)
+
+	// safeSearchAnnotationsRes := make([]*ImageAnnotation, 0)
+	// for i, annotation := range annotateImageResponses {
+	// 	if annotation == nil {
+	// 		continue
+	// 	}
+	// 	uri := uris[i]
+	// 	safeSearchAnnotationsRes = append(safeSearchAnnotationsRes, annotationToSafeSearchResponseRes(uri, annotation))
+	// }
+	// res = append(res, safeSearchAnnotationsRes...)
 
 	err = cacheAnnotations(safeSearchAnnotationsRes)
 	if err != nil {
 		logger.Error().Msgf("failed to cache with uris: %v", uris)
 	}
 
-	logger.Debug().Msgf("license: %s added %d to request count", licenseID, len(annotateImageResponses))
+	logger.Info().Msgf("license: %s added %d to request count", licenseID, len(annotateImageResponses))
 
 	return res, nil
 }
@@ -112,19 +126,7 @@ func annotationToSafeSearchResponseRes(uri string, annotation *pb.AnnotateImageR
 		err = sql.NullString{String: "", Valid: false}
 	}
 
-	if annotation != nil && annotation.SafeSearchAnnotation != nil {
-		return &ImageAnnotation{
-			Hash:      Hash(uri),
-			URI:       uri,
-			Error:     err,
-			DateAdded: time.Now(),
-			Adult:     int16(annotation.SafeSearchAnnotation.Adult),
-			Spoof:     int16(annotation.SafeSearchAnnotation.Spoof),
-			Medical:   int16(annotation.SafeSearchAnnotation.Medical),
-			Violence:  int16(annotation.SafeSearchAnnotation.Violence),
-			Racy:      int16(annotation.SafeSearchAnnotation.Racy),
-		}
-	} else {
+	if annotation == nil || annotation.SafeSearchAnnotation == nil {
 		return &ImageAnnotation{
 			Hash:      Hash(uri),
 			URI:       uri,
@@ -137,6 +139,18 @@ func annotationToSafeSearchResponseRes(uri string, annotation *pb.AnnotateImageR
 			Racy:      0,
 		}
 	}
+
+	return &ImageAnnotation{
+		Hash:      Hash(uri),
+		URI:       uri,
+		Error:     err,
+		DateAdded: time.Now(),
+		Adult:     int16(annotation.SafeSearchAnnotation.Adult),
+		Spoof:     int16(annotation.SafeSearchAnnotation.Spoof),
+		Medical:   int16(annotation.SafeSearchAnnotation.Medical),
+		Violence:  int16(annotation.SafeSearchAnnotation.Violence),
+		Racy:      int16(annotation.SafeSearchAnnotation.Racy),
+	}
 }
 
 func cacheAnnotations(annos []*ImageAnnotation) error {
@@ -145,7 +159,7 @@ func cacheAnnotations(annos []*ImageAnnotation) error {
 	}
 
 	for _, anno := range annos {
-		logger.Debug().Msgf("Adding %s to DB cache", anno.URI)
+		logger.Info().Msgf("adding %s to DB cache", anno.URI)
 	}
 
 	return nil

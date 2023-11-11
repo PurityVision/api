@@ -19,7 +19,7 @@ var conn *pg.DB
 
 var licenseStore *LicenseStore
 
-var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+var logger zerolog.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true}).With().Caller().Logger()
 
 // AnnotateReq is the form of an incoming JSON payload
 // for retrieving pass/fail status of each supplied image URI.

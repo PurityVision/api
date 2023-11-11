@@ -28,7 +28,7 @@ func removeDuplicates(vals []string) []string {
 
 	for _, v := range vals {
 		if found := strMap[v]; found {
-			logger.Debug().Msgf("Found duplicate image: %s in request. Removing.", v)
+			logger.Info().Msgf("found duplicate image: %s in request. Removing.", v)
 			continue
 		}
 		res = append(res, v)
@@ -97,7 +97,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
-		logger.Debug().Msgf("Error reading request body: %v", err)
+		logger.Error().Msgf("error reading request body: %v", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -106,7 +106,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"), endpointSecret)
 
 	if err != nil {
-		logger.Debug().Msgf("error verifying webhook signature: %v", err)
+		logger.Error().Msgf("error verifying webhook signature: %v", err)
 		w.WriteHeader(http.StatusBadRequest) // Return a 400 error on a bad signature
 		return
 	}
@@ -118,7 +118,8 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		var session stripe.CheckoutSession
 		err := json.Unmarshal(event.Data.Raw, &session)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing webhook JSON: %v\n", err)
+			logger.Error().Msgf("error parsing webhook JSON: %v", err.Error())
+			fmt.Fprintf(os.Stderr, "error parsing webhook JSON: %v\n", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -129,7 +130,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		license, err := licenseStore.GetLicenseByStripeID(stripeID)
 		if err != nil {
-			logger.Debug().Msgf("Error fetching license: %v", err)
+			logger.Error().Msgf("error fetching license: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -148,9 +149,8 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// else create new license and store in db
-		logger.Debug().Msg("No license found. Creating one")
 		licenseID := GenerateLicenseKey()
-		logger.Debug().Msgf("Generated license: %s", licenseID)
+		logger.Info().Msgf("generating new license: %s", licenseID)
 
 		license = &License{
 			ID:             licenseID,
@@ -163,7 +163,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		}
 
 		if _, err = conn.Model(license).Insert(); err != nil {
-			logger.Debug().Msgf("error creating: %v", err)
+			logger.Error().Msgf("error creating license: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -184,7 +184,7 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		if err = SendLicenseMail(license.Email, license.ID); err != nil {
 			// TODO: retry sending email so user can get their license.
-			logger.Debug().Msgf("error sending license email: %v", err)
+			logger.Error().Msgf("error sending license email: %v", err)
 			PrintSomethingWrong(w)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -199,10 +199,10 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 		license, err := licenseStore.GetLicenseByStripeID(sub.Customer.ID)
 		if err != nil {
-			logger.Debug().Msgf("error finding license for valid subscriber: %v", err)
+			logger.Error().Msgf("error finding license for valid subscriber: %v", err)
 		}
 		if license == nil {
-			logger.Debug().Msg("failed to find license for existing subscriber. Something is terribly wrong")
+			logger.Error().Msg("failed to find license for existing subscriber. Something is terribly wrong")
 			PrintSomethingWrong(w)
 			return
 		}
@@ -210,15 +210,15 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		if sub.CancellationDetails.Reason != "" {
 			license.IsValid = false
 			license.ValidityReason = fmt.Sprintf("subscription was cancelled: %s", sub.CancellationDetails.Reason)
-			logger.Debug().Msgf("invalidated license: %s", license.ID)
+			logger.Error().Msgf("invalidated license: %s", license.ID)
 		} else {
 			license.IsValid = true
 			license.ValidityReason = ""
-			logger.Debug().Msgf("activated license: %s", license.ID)
+			logger.Error().Msgf("activated license: %s", license.ID)
 		}
 
 		if err = licenseStore.UpdateLicense(license); err != nil {
-			logger.Debug().Msgf("error updating license: %v", err)
+			logger.Error().Msgf("error updating license: %v", err)
 			PrintSomethingWrong(w)
 			return
 		}
@@ -233,7 +233,7 @@ func handleGetLicense(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	licenseID := vars["id"]
 
-	logger.Debug().Msgf("verifying license: %s", licenseID)
+	logger.Info().Msgf("verifying license: %s", licenseID)
 
 	license, err := licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
@@ -273,20 +273,20 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 
 	license, err := licenseStore.GetLicenseByEmail(trialReq.Email)
 	if err != nil {
-		logger.Debug().Msgf("failed to fetch license by email: %s", err.Error())
+		logger.Error().Msgf("failed to fetch license by email: %s", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if license != nil {
-		logger.Debug().Msg("email is already registered")
+		logger.Error().Msg("email is already registered")
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "email is already registered")
 		return
 	}
 
 	if err = RegisterNewUser(trialReq.Email); err != nil {
-		logger.Debug().Msgf("something went wrong registering a new user: %v", err)
+		logger.Error().Msgf("something went wrong registering a new user: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -296,7 +296,7 @@ func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
 
 func RegisterNewUser(email string) error {
 	licenseID := GenerateLicenseKey()
-	logger.Debug().Msgf("generated license: %s", licenseID)
+	logger.Info().Msgf("generated license: %s", licenseID)
 
 	license := &License{
 		ID:             licenseID,
@@ -308,13 +308,13 @@ func RegisterNewUser(email string) error {
 	}
 
 	if _, err := conn.Model(license).Insert(); err != nil {
-		logger.Debug().Msgf("error creating: %v", err)
+		logger.Error().Msgf("error creating: %v", err)
 		return err
 	}
 
 	if err := SendLicenseMail(license.Email, license.ID); err != nil {
 		// TODO: retry sending email so user can get their license.
-		logger.Debug().Msgf("error sending license email: %v", err)
+		logger.Error().Msgf("error sending license email: %v", err)
 		return err
 	}
 

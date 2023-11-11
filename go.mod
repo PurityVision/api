@@ -1,6 +1,6 @@
 module purity-vision-filter
 
-go 1.20
+go 1.21
 
 require (
 	cloud.google.com/go/vision v1.2.0

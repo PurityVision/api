@@ -31,7 +31,7 @@ func main() {
 	}
 	zerolog.SetGlobalLevel(zerolog.Level(logLevel))
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true}).With().Caller().Logger()
 
 	conn, err := src.InitDB(src.DBName)
 	if err != nil {
