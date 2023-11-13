@@ -6,7 +6,7 @@ TAG = latest
 .PHONY: docker-run run test docker-stop clean down
 
 docker-run: $(TARGET)
-	docker compose --env-file ./.env up --detach
+	docker compose up --detach
 
 run: $(TARGET)
 	./scripts/start-db.sh
@@ -27,7 +27,7 @@ test:
 
 down: stop
 stop:
-	docker-compose --env-file ./.env down
+	docker-compose ./.env down
 
 clean:
 	rm ${NAME}

@@ -8,14 +8,14 @@ import (
 	"github.com/stripe/stripe-go/v74/usagerecord"
 )
 
-func IncrementSubscriptionMeter(lic *License, quantity int64) error {
-	if StripeKey == "" {
+func IncrementSubscriptionMeter(stripeKey string, lic *License, quantity int64) error {
+	if stripeKey == "" {
 		return errors.New("STRIPE_KEY env var not found")
 	}
 
-	stripe.Key = StripeKey
+	stripe.Key = stripeKey
 
-	s, err := fetchStripeSubscription(lic)
+	s, err := fetchStripeSubscription(stripeKey, lic)
 	if err != nil {
 		return err
 	}
@@ -31,12 +31,12 @@ func IncrementSubscriptionMeter(lic *License, quantity int64) error {
 	return err
 }
 
-func fetchStripeSubscription(lic *License) (*stripe.Subscription, error) {
-	if StripeKey == "" {
+func fetchStripeSubscription(stripeKey string, lic *License) (*stripe.Subscription, error) {
+	if stripeKey == "" {
 		return nil, errors.New("STRIPE_KEY env var not found")
 	}
 
-	stripe.Key = StripeKey
+	stripe.Key = stripeKey
 
 	sub, err := subscription.Get(lic.SubscriptionID, nil)
 	if err != nil {

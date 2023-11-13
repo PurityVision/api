@@ -10,9 +10,9 @@ import (
 )
 
 // return URIs that are not cached in annotations
-func getCachedSSAs(uris []string) ([]*ImageAnnotation, []string, error) {
+func getCachedSSAs(ctx appContext, uris []string) ([]*ImageAnnotation, []string, error) {
 	var res []*ImageAnnotation
-	cachedSSAs, err := FindAnnotationsByURI(conn, uris)
+	cachedSSAs, err := FindAnnotationsByURI(ctx.db, uris)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -25,7 +25,7 @@ func getCachedSSAs(uris []string) ([]*ImageAnnotation, []string, error) {
 			if cachedSSA.URI == uri {
 				res = append(res, &cachedSSA)
 				found = true
-				logger.Info().Msgf("found cached image: %s", uri)
+				ctx.logger.Info().Msgf("found cached image: %s", uri)
 				break
 			}
 		}
@@ -37,8 +37,8 @@ func getCachedSSAs(uris []string) ([]*ImageAnnotation, []string, error) {
 	return res, uncachedURIs, nil
 }
 
-func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
-	res, uris, err := getCachedSSAs(uris)
+func filterImages(ctx appContext, uris []string, licenseID string) ([]*ImageAnnotation, error) {
+	res, uris, err := getCachedSSAs(ctx, uris)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 		return res, nil
 	}
 
-	license, err := licenseStore.GetLicenseByID(licenseID)
+	license, err := ctx.licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch license: %s", err.Error())
 	}
@@ -54,12 +54,12 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 		return nil, errors.New("license not found")
 	}
 	if license.IsTrial {
-		remainingUsage := TrialLicenseMaxUsage - license.RequestCount
+		remainingUsage := ctx.config.TrialLicenseMaxUsage - license.RequestCount
 		if remainingUsage < len(uris) {
 			uris = uris[:remainingUsage]
 		}
 		if remainingUsage <= 0 { // return early if trial license is expired
-			license, err := licenseStore.ExpireTrial(license)
+			license, err := ctx.licenseStore.ExpireTrial(license)
 			if err != nil {
 				return res, fmt.Errorf("failed to mark trial license as expired: %s", err.Error())
 			} else {
@@ -75,11 +75,11 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 
 	if len(annotateImageResponses) > 0 {
 		license.RequestCount += len(annotateImageResponses)
-		if err = licenseStore.UpdateLicense(license); err != nil {
-			logger.Error().Msgf("failed to update license request count: %s", err)
+		if err = ctx.licenseStore.UpdateLicense(license); err != nil {
+			ctx.logger.Error().Msgf("failed to update license request count: %s", err)
 		}
-		if err := IncrementSubscriptionMeter(license, int64(len(annotateImageResponses))); err != nil {
-			logger.Error().Msgf("failed to update stripe subscription usage: %s", err.Error())
+		if err := IncrementSubscriptionMeter(ctx.config.StripeKey, license, int64(len(annotateImageResponses))); err != nil {
+			ctx.logger.Error().Msgf("failed to update stripe subscription usage: %s", err.Error())
 		}
 	}
 
@@ -98,22 +98,12 @@ func filterImages(uris []string, licenseID string) ([]*ImageAnnotation, error) {
 	safeSearchAnnotationsRes := buildSSARes(annotateImageResponses)
 	res = append(res, safeSearchAnnotationsRes...)
 
-	// safeSearchAnnotationsRes := make([]*ImageAnnotation, 0)
-	// for i, annotation := range annotateImageResponses {
-	// 	if annotation == nil {
-	// 		continue
-	// 	}
-	// 	uri := uris[i]
-	// 	safeSearchAnnotationsRes = append(safeSearchAnnotationsRes, annotationToSafeSearchResponseRes(uri, annotation))
-	// }
-	// res = append(res, safeSearchAnnotationsRes...)
-
-	err = cacheAnnotations(safeSearchAnnotationsRes)
+	err = cacheAnnotations(ctx, safeSearchAnnotationsRes)
 	if err != nil {
-		logger.Error().Msgf("failed to cache with uris: %v", uris)
+		ctx.logger.Error().Msgf("failed to cache with uris: %v", uris)
 	}
 
-	logger.Info().Msgf("license: %s added %d to request count", licenseID, len(annotateImageResponses))
+	ctx.logger.Info().Msgf("license: %s added %d to request count", licenseID, len(annotateImageResponses))
 
 	return res, nil
 }
@@ -153,13 +143,13 @@ func annotationToSafeSearchResponseRes(uri string, annotation *pb.AnnotateImageR
 	}
 }
 
-func cacheAnnotations(annos []*ImageAnnotation) error {
-	if err := InsertAll(conn, annos); err != nil {
+func cacheAnnotations(ctx appContext, annos []*ImageAnnotation) error {
+	if err := InsertAll(ctx.db, annos); err != nil {
 		return err
 	}
 
 	for _, anno := range annos {
-		logger.Info().Msgf("adding %s to DB cache", anno.URI)
+		ctx.logger.Info().Msgf("adding %s to DB cache", anno.URI)
 	}
 
 	return nil

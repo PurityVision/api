@@ -3,7 +3,9 @@ package src
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/go-pg/pg/v10"
@@ -17,28 +19,18 @@ type User struct {
 }
 
 // InitDB intializes and returns a postgres database connection object.
-func InitDB(dbName string) (*pg.DB, error) {
-	dbHost := DBHost
-	dbPort := DBPort
-	dbAddr := fmt.Sprintf("%s:%s", dbHost, dbPort)
-	if dbName == "" {
-		dbName = DBName
-	}
-	dbUser := DBUser
-	dbPassword := DBPassword
+func InitDB(config Config) (*pg.DB, error) {
+	dbAddr := fmt.Sprintf("%s:%s", config.DBHost, config.DBPort)
 
-	if dbPassword == "" {
+	if config.DBPassword == "" {
 		return nil, fmt.Errorf("missing postgres password. Export \"PURITY_DB_PASS=<your_password>\"")
 	}
 
-	// TODO: use
-	// tlsConfig := &tls.Config{}
-
 	conn := pg.Connect(&pg.Options{
 		Addr:     dbAddr,
-		User:     dbUser,
-		Password: dbPassword,
-		Database: dbName,
+		User:     config.DBUser,
+		Password: config.DBPassword,
+		Database: config.DBName,
 	})
 
 	// Print SQL queries to logger if loglevel is set to debug.
@@ -55,6 +47,8 @@ func InitDB(dbName string) (*pg.DB, error) {
 type loggerHook struct{}
 
 func (h loggerHook) BeforeQuery(ctx context.Context, evt *pg.QueryEvent) (context.Context, error) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true}).With().Caller().Logger()
+
 	q, err := evt.FormattedQuery()
 	if err != nil {
 		return nil, err

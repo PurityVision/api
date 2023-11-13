@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
-	"github.com/rs/zerolog/log"
 )
 
 type ImageAnnotation struct {
@@ -24,20 +23,19 @@ type ImageAnnotation struct {
 }
 
 // FindByURI returns an image with the matching URI.
-func FindByURI(conn *pg.DB, imgURI string) (*ImageAnnotation, error) {
+func FindByURI(conn pg.DB, imgURI string) (ImageAnnotation, error) {
 	var img ImageAnnotation
 
 	err := conn.Model(&img).Where("uri = ?", imgURI).Select()
 	if err != nil {
-		log.Error().Msgf("err: %v", err)
-		return nil, nil
+		return img, err
 	}
 
-	return &img, nil
+	return img, nil
 }
 
 // FindAnnotationsByURI returns annotations that have matching URI's.
-func FindAnnotationsByURI(conn *pg.DB, uris []string) ([]ImageAnnotation, error) {
+func FindAnnotationsByURI(conn pg.DB, uris []string) ([]ImageAnnotation, error) {
 	var annotations []ImageAnnotation
 
 	if len(uris) == 0 {
@@ -50,17 +48,17 @@ func FindAnnotationsByURI(conn *pg.DB, uris []string) ([]ImageAnnotation, error)
 }
 
 // Insert inserts the annotation into the DB.
-func Insert(conn *pg.DB, image *ImageAnnotation) error {
-	_, err := conn.Model(image).Insert()
+func Insert(conn pg.DB, image ImageAnnotation) error {
+	_, err := conn.Model(&image).Insert()
 	if err != nil {
 		return err
 	}
-	logger.Debug().Msgf("inserted image: %s", image.URI)
 
 	return nil
 }
 
-func InsertAll(conn *pg.DB, images []*ImageAnnotation) error {
+// InsertAll inserts all the image safe search annotations into the DB.
+func InsertAll(conn pg.DB, images []*ImageAnnotation) error {
 	if len(images) == 0 {
 		return nil
 	}
@@ -69,13 +67,12 @@ func InsertAll(conn *pg.DB, images []*ImageAnnotation) error {
 	if err != nil {
 		return err
 	}
-	logger.Debug().Msgf("inserted %d images", len(images))
 
 	return nil
 }
 
 // DeleteByURI deletes the images with matching URI.
-func DeleteByURI(conn *pg.DB, uri string) error {
+func DeleteByURI(conn pg.DB, uri string) error {
 	img := ImageAnnotation{URI: uri}
 
 	if _, err := conn.Model(&img).Where("uri = ?", uri).Delete(); err != nil {

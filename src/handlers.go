@@ -2,6 +2,7 @@ package src
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,7 +23,7 @@ func health(w http.ResponseWriter, req *http.Request) {
 
 const MAX_IMAGES_PER_REQUEST = 16
 
-func removeDuplicates(vals []string) []string {
+func removeDuplicates(logger zerolog.Logger, vals []string) []string {
 	res := make([]string, 0)
 	strMap := make(map[string]bool, 0)
 
@@ -38,77 +39,65 @@ func removeDuplicates(vals []string) []string {
 
 	return res
 }
+func handleBatchFilter(ctx appContext, w http.ResponseWriter, req *http.Request) (int, error) {
+	var filterReqPayload AnnotateReq
 
-func handleBatchFilter(logger zerolog.Logger) func(w http.ResponseWriter, req *http.Request) {
-	return func(w http.ResponseWriter, req *http.Request) {
-		var filterReqPayload AnnotateReq
-
-		decoder := json.NewDecoder(req.Body)
-		if err := decoder.Decode(&filterReqPayload); err != nil {
-			writeError(400, "JSON body missing or malformed", w)
-			return
-		}
-
-		if len(filterReqPayload.ImgURIList) == 0 {
-			writeError(400, "ImgUriList cannot be empty", w)
-			return
-		}
-
-		var res []*ImageAnnotation
-
-		uris := removeDuplicates(filterReqPayload.ImgURIList)
-
-		// Validate the request payload URIs
-		for _, uri := range uris {
-			if _, err := url.ParseRequestURI(uri); err != nil {
-				writeError(400, fmt.Sprintf("%s is not a valid URI", uri), w)
-				return
-			}
-		}
-
-		// Filter images in pages of size MAX_IMAGES_PER_REQUEST.
-		for i := 0; i < len(uris); {
-			var endIdx int
-			if i+MAX_IMAGES_PER_REQUEST > len(uris)-1 {
-				endIdx = len(uris)
-			} else {
-				endIdx = i + MAX_IMAGES_PER_REQUEST
-			}
-
-			temp, err := filterImages(uris[i:endIdx], req.Header.Get("LicenseID"))
-			if err != nil {
-				logger.Error().Msgf("error while filtering: %s", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
-			res = append(res, temp...)
-
-			i += MAX_IMAGES_PER_REQUEST
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(res)
+	decoder := json.NewDecoder(req.Body)
+	if err := decoder.Decode(&filterReqPayload); err != nil {
+		return http.StatusBadRequest, errors.New("JSON body missing or malformed")
 	}
+
+	if len(filterReqPayload.ImgURIList) == 0 {
+		return http.StatusBadRequest, errors.New("ImgUriList cannot be empty")
+	}
+
+	var res []*ImageAnnotation
+
+	uris := removeDuplicates(ctx.logger, filterReqPayload.ImgURIList)
+
+	for _, uri := range uris {
+		if _, err := url.ParseRequestURI(uri); err != nil {
+			return http.StatusBadRequest, fmt.Errorf("%s is not a valid URI", uri)
+		}
+	}
+
+	// Filter images in pages of size MAX_IMAGES_PER_REQUEST.
+	for i := 0; i < len(uris); {
+		var endIdx int
+		if i+MAX_IMAGES_PER_REQUEST > len(uris)-1 {
+			endIdx = len(uris)
+		} else {
+			endIdx = i + MAX_IMAGES_PER_REQUEST
+		}
+
+		temp, err := filterImages(ctx, uris[i:endIdx], req.Header.Get("LicenseID"))
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("error while filtering: %s", err)
+		}
+
+		res = append(res, temp...)
+
+		i += MAX_IMAGES_PER_REQUEST
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+	return http.StatusOK, nil
 }
 
-func handleWebhook(w http.ResponseWriter, req *http.Request) {
+func handleWebhook(ctx appContext, w http.ResponseWriter, req *http.Request) (int, error) {
 	const MaxBodyBytes = int64(65536)
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
-		logger.Error().Msgf("error reading request body: %v", err)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+		return http.StatusServiceUnavailable, fmt.Errorf("error reading request body: %v", err)
 	}
 
-	endpointSecret := StripeWebhookSecret
+	endpointSecret := ctx.config.StripeWebhookSecret
 	event, err := webhook.ConstructEvent(payload, req.Header.Get("Stripe-Signature"), endpointSecret)
 
 	if err != nil {
-		logger.Error().Msgf("error verifying webhook signature: %v", err)
-		w.WriteHeader(http.StatusBadRequest) // Return a 400 error on a bad signature
-		return
+		return http.StatusBadRequest, fmt.Errorf("error verifying webhook signature: %v", err)
 	}
 
 	// Unmarshal the event data into an appropriate struct depending on its Type
@@ -118,39 +107,32 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 		var session stripe.CheckoutSession
 		err := json.Unmarshal(event.Data.Raw, &session)
 		if err != nil {
-			logger.Error().Msgf("error parsing webhook JSON: %v", err.Error())
-			fmt.Fprintf(os.Stderr, "error parsing webhook JSON: %v\n", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return http.StatusBadRequest, fmt.Errorf("error parsing webhook JSON: %v", err.Error())
 		}
 
 		subscriptionID := session.Subscription.ID
 		stripeID := session.Customer.ID
 		email := session.CustomerDetails.Email
 
-		license, err := licenseStore.GetLicenseByStripeID(stripeID)
+		license, err := ctx.licenseStore.GetLicenseByStripeID(stripeID)
 		if err != nil {
-			logger.Error().Msgf("error fetching license: %v", err)
-			PrintSomethingWrong(w)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			return http.StatusInternalServerError, fmt.Errorf("error fetching license: %v", err)
 		}
 
 		// if license exists ensure IsValid is true and return
 		if license != nil {
-			logger.Debug().Msg("Existing license found, ensuring IsValid is true")
+			ctx.logger.Debug().Msg("existing license found, ensuring IsValid is true")
 			license.IsValid = true
-			if err := licenseStore.UpdateLicense(license); err != nil {
-				PrintSomethingWrong(w)
-				w.WriteHeader(http.StatusInternalServerError)
+			if err := ctx.licenseStore.UpdateLicense(license); err != nil {
+				return http.StatusInternalServerError, errors.New("")
 			}
 			// TODO: email person to remind them their subscription is renewed.
-			return
+			return http.StatusOK, nil
 		}
 
 		// else create new license and store in db
 		licenseID := GenerateLicenseKey()
-		logger.Info().Msgf("generating new license: %s", licenseID)
+		ctx.logger.Info().Msgf("generating new license: %s", licenseID)
 
 		license = &License{
 			ID:             licenseID,
@@ -162,85 +144,73 @@ func handleWebhook(w http.ResponseWriter, req *http.Request) {
 			RequestCount:   0,
 		}
 
-		if _, err = conn.Model(license).Insert(); err != nil {
-			logger.Error().Msgf("error creating license: %v", err)
-			PrintSomethingWrong(w)
-			w.WriteHeader(http.StatusInternalServerError)
+		if _, err = ctx.db.Model(license).Insert(); err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("error creating license: %v", err)
 		}
 
-		stripe.Key = StripeKey
+		stripe.Key = ctx.config.StripeKey
 		metadata := map[string]string{
 			"license": licenseID,
 		}
 		if _, err := customer.Update(session.Customer.ID, &stripe.CustomerParams{
-			Params: stripe.Params{
-				Metadata: metadata,
-			},
+			Params: stripe.Params{Metadata: metadata},
 		}); err != nil {
-			fmt.Fprintf(w, "error adding license to customer metadata: %v", err)
-			PrintSomethingWrong(w)
-			w.WriteHeader(http.StatusInternalServerError)
+			return http.StatusInternalServerError, fmt.Errorf("error adding license to customer metadata: %v", err)
 		}
 
-		if err = SendLicenseMail(license.Email, license.ID); err != nil {
+		if err = SendLicenseMail(ctx.config, license.Email, license.ID); err != nil {
 			// TODO: retry sending email so user can get their license.
-			logger.Error().Msgf("error sending license email: %v", err)
-			PrintSomethingWrong(w)
-			w.WriteHeader(http.StatusInternalServerError)
+			return http.StatusInternalServerError, fmt.Errorf("error sending license email: %v", err)
 		}
 	case "customer.subscription.updated":
 		sub := stripe.Subscription{}
 		err := json.Unmarshal(event.Data.Raw, &sub)
 		if err != nil {
-			fmt.Fprintf(w, "error parsing webhook JSON: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return http.StatusBadRequest, fmt.Errorf("error parsing webhook JSON: %v", err)
 		}
 
-		license, err := licenseStore.GetLicenseByStripeID(sub.Customer.ID)
+		license, err := ctx.licenseStore.GetLicenseByStripeID(sub.Customer.ID)
 		if err != nil {
-			logger.Error().Msgf("error finding license for valid subscriber: %v", err)
+			return http.StatusInternalServerError, fmt.Errorf("error finding license for valid subscriber: %v", err)
 		}
 		if license == nil {
-			logger.Error().Msg("failed to find license for existing subscriber. Something is terribly wrong")
-			PrintSomethingWrong(w)
-			return
+			return http.StatusInternalServerError, errors.New("failed to find license")
 		}
 
 		if sub.CancellationDetails.Reason != "" {
 			license.IsValid = false
 			license.ValidityReason = fmt.Sprintf("subscription was cancelled: %s", sub.CancellationDetails.Reason)
-			logger.Error().Msgf("invalidated license: %s", license.ID)
+			ctx.logger.Info().Msgf("invalidated license: %s", license.ID)
 		} else {
 			license.IsValid = true
 			license.ValidityReason = ""
-			logger.Error().Msgf("activated license: %s", license.ID)
+			ctx.logger.Info().Msgf("activated license: %s", license.ID)
 		}
 
-		if err = licenseStore.UpdateLicense(license); err != nil {
-			logger.Error().Msgf("error updating license: %v", err)
-			PrintSomethingWrong(w)
-			return
+		if err = ctx.licenseStore.UpdateLicense(license); err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("error updating license: %v", err)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unhandled event type: %s", event.Type)
 	}
 
 	w.WriteHeader(http.StatusOK)
+	return http.StatusOK, nil
 }
 
-func handleGetLicense(w http.ResponseWriter, req *http.Request) {
+func handleGetLicense(ctx appContext, w http.ResponseWriter, req *http.Request) (int, error) {
 	vars := mux.Vars(req)
 	licenseID := vars["id"]
 
-	logger.Info().Msgf("verifying license: %s", licenseID)
+	if licenseID == "" {
+		return http.StatusBadRequest, errors.New("licenseID path parameter was empty")
+	}
 
-	license, err := licenseStore.GetLicenseByID(licenseID)
+	ctx.logger.Info().Msgf("verifying license: %s", licenseID)
+
+	license, err := ctx.licenseStore.GetLicenseByID(licenseID)
 	if err != nil {
-		logger.Error().Msgf("failed to get license: %s", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		PrintSomethingWrong(w)
-		return
+		return http.StatusInternalServerError, fmt.Errorf("failed to get license: %s", err.Error())
 	}
 
 	// if license == nil {
@@ -250,53 +220,54 @@ func handleGetLicense(w http.ResponseWriter, req *http.Request) {
 	// }
 
 	json.NewEncoder(w).Encode(license)
+	return http.StatusOK, nil
 }
 
 type TrialRegisterReq struct {
 	Email string
 }
 
-func handleTrialRegister(w http.ResponseWriter, req *http.Request) {
-	var trialReq TrialRegisterReq
+// func handleTrialRegister(ctx *appContext, w http.ResponseWriter, req *http.Request) {
+// 	var trialReq TrialRegisterReq
 
-	decoder := json.NewDecoder(req.Body)
-	if err := decoder.Decode(&trialReq); err != nil {
-		writeError(400, "JSON body missing or malformed", w)
-		return
-	}
+// 	decoder := json.NewDecoder(req.Body)
+// 	if err := decoder.Decode(&trialReq); err != nil {
+// 		writeError(ctx.logger, 400, "JSON body missing or malformed", w)
+// 		return
+// 	}
 
-	if trialReq.Email == "" {
-		fmt.Fprint(w, "Email cannot be empty")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+// 	if trialReq.Email == "" {
+// 		fmt.Fprint(w, "Email cannot be empty")
+// 		w.WriteHeader(http.StatusBadRequest)
+// 		return
+// 	}
 
-	license, err := licenseStore.GetLicenseByEmail(trialReq.Email)
-	if err != nil {
-		logger.Error().Msgf("failed to fetch license by email: %s", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+// 	license, err := ctx.licenseStore.GetLicenseByEmail(trialReq.Email)
+// 	if err != nil {
+// 		ctx.logger.Error().Msgf("failed to fetch license by email: %s", err.Error())
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		return
+// 	}
 
-	if license != nil {
-		logger.Error().Msg("email is already registered")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "email is already registered")
-		return
-	}
+// 	if license != nil {
+// 		ctx.logger.Error().Msg("email is already registered")
+// 		w.WriteHeader(http.StatusBadRequest)
+// 		fmt.Fprint(w, "email is already registered")
+// 		return
+// 	}
 
-	if err = RegisterNewUser(trialReq.Email); err != nil {
-		logger.Error().Msgf("something went wrong registering a new user: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+// 	if err = RegisterNewUser(ctx.config, trialReq.Email); err != nil {
+// 		ctx.logger.Error().Msgf("something went wrong registering a new user: %v", err)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		return
+// 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+// 	w.WriteHeader(http.StatusOK)
+// }
 
-func RegisterNewUser(email string) error {
+func RegisterNewUser(ctx appContext, email string) error {
 	licenseID := GenerateLicenseKey()
-	logger.Info().Msgf("generated license: %s", licenseID)
+	ctx.logger.Info().Msgf("generated license: %s", licenseID)
 
 	license := &License{
 		ID:             licenseID,
@@ -307,14 +278,14 @@ func RegisterNewUser(email string) error {
 		RequestCount:   0,
 	}
 
-	if _, err := conn.Model(license).Insert(); err != nil {
-		logger.Error().Msgf("error creating: %v", err)
+	if _, err := ctx.db.Model(license).Insert(); err != nil {
+		ctx.logger.Error().Msgf("error creating: %v", err)
 		return err
 	}
 
-	if err := SendLicenseMail(license.Email, license.ID); err != nil {
+	if err := SendLicenseMail(ctx.config, license.Email, license.ID); err != nil {
 		// TODO: retry sending email so user can get their license.
-		logger.Error().Msgf("error sending license email: %v", err)
+		ctx.logger.Error().Msgf("error sending license email: %v", err)
 		return err
 	}
 

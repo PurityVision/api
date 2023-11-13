@@ -15,23 +15,24 @@ type License struct {
 	IsTrial        bool   `json:"isTrial"`
 }
 
-type LicenseManager interface {
+type LicenseStorer interface {
 	GetLicenseByID(id string) (*License, error)
 	GetLicenseByStripeID(id string) (*License, error)
 	UpdateLicense(*License) error
+	GetLicenseByEmail(email string) (*License, error)
 	ExpireTrial(*License) (*License, error)
 }
 
-type LicenseStore struct {
+type licenseStore struct {
 	db *pg.DB
 }
 
-func NewLicenseStore(db *pg.DB) *LicenseStore {
-	return &LicenseStore{db: db}
+func NewLicenseStore(db *pg.DB) *licenseStore {
+	return &licenseStore{db: db}
 }
 
 // GetLicenseByID fetches a license from DB by license ID
-func (store *LicenseStore) GetLicenseByID(id string) (*License, error) {
+func (store *licenseStore) GetLicenseByID(id string) (*License, error) {
 	license := new(License)
 	err := store.db.Model(license).Where("id = ?", id).Select()
 	if err != nil {
@@ -43,7 +44,7 @@ func (store *LicenseStore) GetLicenseByID(id string) (*License, error) {
 	return license, nil
 }
 
-func (store *LicenseStore) GetLicenseByStripeID(stripeID string) (*License, error) {
+func (store *licenseStore) GetLicenseByStripeID(stripeID string) (*License, error) {
 	license := new(License)
 	err := store.db.Model(license).Where("stripe_id = ?", stripeID).Select()
 	if err != nil {
@@ -55,12 +56,12 @@ func (store *LicenseStore) GetLicenseByStripeID(stripeID string) (*License, erro
 	return license, nil
 }
 
-func (store *LicenseStore) UpdateLicense(license *License) error {
+func (store *licenseStore) UpdateLicense(license *License) error {
 	_, err := store.db.Model(license).Where("id = ?", license.ID).Update(license)
 	return err
 }
 
-func (store *LicenseStore) GetLicenseByEmail(email string) (*License, error) {
+func (store *licenseStore) GetLicenseByEmail(email string) (*License, error) {
 	license := new(License)
 	err := store.db.Model(license).Where("email = ?", email).Select()
 	if err != nil {
@@ -72,7 +73,7 @@ func (store *LicenseStore) GetLicenseByEmail(email string) (*License, error) {
 	return license, nil
 }
 
-func (store *LicenseStore) ExpireTrial(license *License) (*License, error) {
+func (store *licenseStore) ExpireTrial(license *License) (*License, error) {
 	license.IsValid = false
 	license.ValidityReason = "trial license has expired"
 	if err := store.UpdateLicense(license); err != nil {

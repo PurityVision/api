@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func getLicenseFromReq(ls LicenseManager, r *http.Request) (*License, error) {
+func getLicenseFromReq(ls LicenseStorer, r *http.Request) (*License, error) {
 	licenseID := r.Header.Get("LicenseID")
 
 	_, err := uuid.Parse(licenseID)
@@ -23,11 +23,12 @@ func getLicenseFromReq(ls LicenseManager, r *http.Request) (*License, error) {
 	return license, nil
 }
 
-func paywallMiddleware(ls LicenseManager) func(next http.Handler) http.Handler {
+func paywallMiddleware(ctx appContext) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			license, err := getLicenseFromReq(ls, r)
+			license, err := getLicenseFromReq(ctx.licenseStore, r)
 			if err != nil {
+				ctx.logger.Info().Msgf("failed to get license: %v", err)
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
