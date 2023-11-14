@@ -4,3 +4,14 @@ if ! make test; then
 	echo "Please fix tests before committing."
 	exit 1
 fi
+
+if ! staticcheck ./...; then
+	echo "fix lint issues"
+	exit 1
+fi
+
+# Check for shadowed vars
+if ! go vet -vettool=$(which shadow); then
+	echo "fix shadowed var issues"
+	exit 1
+fi

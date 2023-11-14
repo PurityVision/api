@@ -59,7 +59,7 @@ func (ah appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Init intializes the Serve instance and exposes it based on the port parameter.
+// InitServer intializes an HTTP server and registers listeners.
 func InitServer() {
 	var portFlag int
 
