@@ -44,7 +44,7 @@ func (ah appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Updated to pass ah.appContext as a parameter to our handler type.
 	status, err := ah.H(ah.appContext, w, r)
 	if err != nil {
-		log.Printf("HTTP %d: %q", status, err)
+		ah.appContext.logger.Printf("HTTP %d: %q", status, err)
 		switch status {
 		case http.StatusNotFound:
 			http.NotFound(w, r)
@@ -96,7 +96,7 @@ func InitServer() {
 
 	r.Use(addCorsHeaders)
 	r.Handle("/", http.FileServer(http.Dir("./"))).Methods("GET")
-	r.HandleFunc("/health", health).Methods("GET", "OPTIONS")
+	r.Handle("/health", &appHandler{ctx, handleHealth}).Methods("GET", "OPTIONS")
 	r.Handle("/license/{id}", &appHandler{ctx, handleGetLicense}).Methods("GET", "OPTIONS")
 	r.Handle("/webhook", &appHandler{ctx, handleWebhook}).Methods("POST")
 	// r.HandleFunc("/trial-register", handleTrialRegister).Methods("POST", "OPTIONS")

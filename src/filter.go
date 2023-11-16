@@ -17,7 +17,7 @@ func getCachedSSAs(ctx appContext, uris []string) ([]*ImageAnnotation, []string,
 		return nil, nil, err
 	}
 
-	uncachedURIs := make([]string, 0)
+	uncachedURIs := make([]string, 0, len(uris))
 
 	for _, uri := range uris {
 		found := false
@@ -59,7 +59,7 @@ func filterImages(ctx appContext, uris []string, licenseID string) ([]*ImageAnno
 			uris = uris[:remainingUsage]
 		}
 		if remainingUsage <= 0 { // return early if trial license is expired
-			license, err := ctx.licenseStore.ExpireTrial(license)
+			license, err = ctx.licenseStore.ExpireTrial(license)
 			if err != nil {
 				return res, fmt.Errorf("failed to mark trial license as expired: %s", err.Error())
 			} else {
@@ -78,21 +78,21 @@ func filterImages(ctx appContext, uris []string, licenseID string) ([]*ImageAnno
 		if err = ctx.licenseStore.UpdateLicense(license); err != nil {
 			ctx.logger.Error().Msgf("failed to update license request count: %s", err)
 		}
-		if err := IncrementSubscriptionMeter(ctx.config.StripeKey, license, int64(len(annotateImageResponses))); err != nil {
+		if err = IncrementSubscriptionMeter(ctx.config.StripeKey, license, int64(len(annotateImageResponses))); err != nil {
 			ctx.logger.Error().Msgf("failed to update stripe subscription usage: %s", err.Error())
 		}
 	}
 
 	var buildSSARes = func(annotations []*pb.AnnotateImageResponse) []*ImageAnnotation {
-		var res []*ImageAnnotation
+		var annoRes []*ImageAnnotation
 		for i, annotation := range annotations {
 			if annotation == nil {
 				continue
 			}
 			uri := uris[i]
-			res = append(res, annotationToSafeSearchResponseRes(uri, annotation))
+			annoRes = append(annoRes, annotationToSafeSearchResponseRes(uri, annotation))
 		}
-		return res
+		return annoRes
 	}
 
 	safeSearchAnnotationsRes := buildSSARes(annotateImageResponses)

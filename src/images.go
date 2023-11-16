@@ -42,7 +42,9 @@ func FindAnnotationsByURI(conn pg.DB, uris []string) ([]ImageAnnotation, error) 
 		return nil, fmt.Errorf("imgURIList cannot be empty")
 	}
 
-	conn.Model(&annotations).Where("uri IN (?)", pg.In(uris)).Select()
+	if err := conn.Model(&annotations).Where("uri IN (?)", pg.In(uris)).Select(); err != nil {
+		return nil, err
+	}
 
 	return annotations, nil
 }

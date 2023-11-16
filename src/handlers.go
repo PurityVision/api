@@ -16,15 +16,19 @@ import (
 	"github.com/stripe/stripe-go/v74/webhook"
 )
 
-func health(w http.ResponseWriter, req *http.Request) {
+func handleHealth(ctx appContext, w http.ResponseWriter, req *http.Request) (int, error) {
 	w.WriteHeader(200)
-	w.Write([]byte("All Good ☮️"))
+	if _, err := w.Write([]byte("All Good ☮️")); err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("failed to write response: %v", err)
+	}
+
+	return http.StatusOK, nil
 }
 
 const MAX_IMAGES_PER_REQUEST = 16
 
 func removeDuplicates(logger zerolog.Logger, vals []string) []string {
-	res := make([]string, 0)
+	res := make([]string, 0, len(vals))
 	strMap := make(map[string]bool, 0)
 
 	for _, v := range vals {
@@ -81,7 +85,9 @@ func handleBatchFilter(ctx appContext, w http.ResponseWriter, req *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		return http.StatusInternalServerError, err
+	}
 	return http.StatusOK, nil
 }
 
@@ -123,7 +129,7 @@ func handleWebhook(ctx appContext, w http.ResponseWriter, req *http.Request) (in
 		if license != nil {
 			ctx.logger.Debug().Msg("existing license found, ensuring IsValid is true")
 			license.IsValid = true
-			if err := ctx.licenseStore.UpdateLicense(license); err != nil {
+			if err = ctx.licenseStore.UpdateLicense(license); err != nil {
 				return http.StatusInternalServerError, errors.New("")
 			}
 			// TODO: email person to remind them their subscription is renewed.
@@ -152,7 +158,7 @@ func handleWebhook(ctx appContext, w http.ResponseWriter, req *http.Request) (in
 		metadata := map[string]string{
 			"license": licenseID,
 		}
-		if _, err := customer.Update(session.Customer.ID, &stripe.CustomerParams{
+		if _, err = customer.Update(session.Customer.ID, &stripe.CustomerParams{
 			Params: stripe.Params{Metadata: metadata},
 		}); err != nil {
 			return http.StatusInternalServerError, fmt.Errorf("error adding license to customer metadata: %v", err)
@@ -219,7 +225,9 @@ func handleGetLicense(ctx appContext, w http.ResponseWriter, req *http.Request) 
 	// 	return
 	// }
 
-	json.NewEncoder(w).Encode(license)
+	if err := json.NewEncoder(w).Encode(license); err != nil {
+		return http.StatusInternalServerError, err
+	}
 	return http.StatusOK, nil
 }
 

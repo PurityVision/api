@@ -2,6 +2,7 @@ package src
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ func getTestCtx() (appContext, error) {
 		return ctx, err
 	}
 	config.DBName = "purity_test"
+	config.DBHost = "localhost"
 	conn, err := InitDB(config)
 	if err != nil {
 		return ctx, err
@@ -31,10 +33,14 @@ func getTestCtx() (appContext, error) {
 }
 
 func TestMain(m *testing.M) {
-	godotenv.Load()
+	if err := godotenv.Load("../.env"); err != nil {
+		fmt.Println(err)
+	}
+	m.Run()
 }
 
 func TestImages(t *testing.T) {
+	// t.FailNow()
 	ctx, err := getTestCtx()
 	if err != nil {
 		t.Fatal(err)

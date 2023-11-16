@@ -17,7 +17,7 @@ func batchAnnotateURIs(uris []string) (*pb.BatchAnnotateImagesResponse, error) {
 	}
 	defer client.Close()
 
-	requests := make([]*pb.AnnotateImageRequest, 0)
+	requests := make([]*pb.AnnotateImageRequest, 0, len(uris))
 	for _, uri := range uris {
 		requests = append(requests, &pb.AnnotateImageRequest{
 			Image: vision.NewImageFromURI(uri),

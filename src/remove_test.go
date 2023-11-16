@@ -25,7 +25,7 @@ func TestStringSliceRemove(t *testing.T) {
 		t.Fatalf("result array should be empty")
 	}
 
-	if _, err := StringSliceRemove(arr, 100); err == nil {
+	if _, err = StringSliceRemove(arr, 100); err == nil {
 		t.Fatal("an error should have been thrown")
 	}
 

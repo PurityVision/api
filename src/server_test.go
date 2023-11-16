@@ -33,59 +33,62 @@ type FilterTest struct {
 	Expect FilterTestExpect
 }
 
-func testHealthNoBody(t *testing.T) {
-	req, err := http.NewRequest("GET", "/health", nil)
-	if err != nil {
-		t.Error("Failed to create test HTTP request")
-	}
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(health)
-
-	handler.ServeHTTP(rr, req)
-
-	if rr.Code != 200 {
-		t.Errorf("Health endpoint expected response 200 but got %d", rr.Code)
-	}
-}
-
 type junkData struct {
 	Name  string
 	Color int
 }
 
-// The health endpoint given junk POST data should still simply return a 200 code.
-func testHealthJunkBody(t *testing.T) {
-	someData := junkData{
-		Name:  "pil",
-		Color: 221,
-	}
-	b, err := json.Marshal(someData)
+func TestHealthEndpoint(t *testing.T) {
+	ctx, err := getTestCtx()
 	if err != nil {
-		t.Error("Failed to marshal request body struct")
-	}
-	r := bytes.NewReader(b)
-	req, err := http.NewRequest("POST", "/health", r)
-	if err != nil {
-		t.Error("Failed to create test HTTP request")
+		t.Error(err)
 	}
 
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(health)
+	t.Run("returns 200 if there is no POST body", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/health", nil)
+		if err != nil {
+			t.Error("Failed to create test HTTP request")
+		}
 
-	handler.ServeHTTP(rr, req)
+		rr := httptest.NewRecorder()
 
-	if rr.Code != 200 {
-		t.Errorf("Health endpoint expected response 200 but got %d", rr.Code)
-	}
+		code, err := handleHealth(ctx, rr, req)
+		if err != nil {
+			t.Error(err)
+		}
+		if code != 200 {
+			t.Errorf("Health endpoint expected response 200 but got %d", rr.Code)
+		}
+	})
+
+	t.Run("returns 200 if there is a junk POST body", func(t *testing.T) {
+		someData := junkData{
+			Name:  "pil",
+			Color: 221,
+		}
+		b, err := json.Marshal(someData)
+		if err != nil {
+			t.Error("Failed to marshal request body struct")
+		}
+		r := bytes.NewReader(b)
+		req, err := http.NewRequest("POST", "/health", r)
+		if err != nil {
+			t.Error("Failed to create test HTTP request")
+		}
+
+		rr := httptest.NewRecorder()
+
+		code, err := handleHealth(ctx, rr, req)
+		if err != nil {
+			t.Error(err)
+		}
+		if code != 200 {
+			t.Errorf("Health endpoint expected response 200 but got %d", rr.Code)
+		}
+	})
 }
 
-func TestHealthHandler(t *testing.T) {
-	testHealthNoBody(t)
-	testHealthJunkBody(t)
-}
-
-func TestServer(t *testing.T) {
+func TestFilterEndpoint(t *testing.T) {
 	ctx, err := getTestCtx()
 	if err != nil {
 		t.Fatal(err)
@@ -93,8 +96,11 @@ func TestServer(t *testing.T) {
 	ctx.logger = zerolog.Logger{}
 
 	t.Cleanup(func() {
-		ctx.db.Model(&ImageAnnotation{}).Where("1=1").Delete()
-		_, err := ctx.db.Model(&License{}).Where("1=1").Delete()
+		_, err := ctx.db.Model(&ImageAnnotation{}).Where("1=1").Delete()
+		if err != nil {
+			fmt.Println("error: ", err)
+		}
+		_, err = ctx.db.Model(&License{}).Where("1=1").Delete()
 		if err != nil {
 			fmt.Println("error: ", err)
 		}
@@ -231,7 +237,7 @@ func TestServer(t *testing.T) {
 				t.Errorf("expected status %d but got %d", test.Expect.Code, rec.Code)
 			}
 			var annotations []*ImageAnnotation
-			json.Unmarshal(rec.Body.Bytes(), &annotations)
+			_ = json.Unmarshal(rec.Body.Bytes(), &annotations)
 
 			if len(annotations) != len(test.Expect.Res) {
 				t.Errorf("expected %d annotation results but got %d", len(test.Expect.Res), len(annotations))
