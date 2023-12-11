@@ -19,4 +19,4 @@ COPY --from=build /go/src/purity-vision/purity-vision .
 
 EXPOSE 8080
 
-CMD ["./purity-vision", "-port", "8080"]
+CMD ["./purity-vision", "server", "-port", "8080"]

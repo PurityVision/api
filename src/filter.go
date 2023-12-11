@@ -25,7 +25,7 @@ func getCachedSSAs(ctx appContext, uris []string) ([]*ImageAnnotation, []string,
 			if cachedSSA.URI == uri {
 				res = append(res, &cachedSSA)
 				found = true
-				ctx.logger.Info().Msgf("found cached image: %s", uri)
+				ctx.logger.Debug().Msgf("found cached image: %s", uri)
 				break
 			}
 		}

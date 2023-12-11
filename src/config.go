@@ -62,18 +62,19 @@ func newConfig() (Config, error) {
 	}
 
 	return Config{
-		DBHost:              getEnvWithDefault("PURITY_DB_HOST", "localhost"),
-		DBPort:              getEnvWithDefault("PURITY_DB_PORT", "5432"),
-		DBName:              getEnvWithDefault("PURITY_DB_NAME", "purity"),
-		DBUser:              getEnvWithDefault("PURITY_DB_USER", "postgres"),
-		DBPassword:          getEnvWithDefault("PURITY_DB_PASS", ""),
-		DBSSLMode:           getEnvWithDefault("PURITY_DB_SSL_MODE", "disable"),
-		LogLevel:            getEnvWithDefault("PURITY_LOG_LEVEL", strconv.Itoa(int(zerolog.InfoLevel))),
-		StripeKey:           StripeKey,
-		StripeWebhookSecret: StripeWebhookSecret,
-		EmailName:           EmailName,
-		EmailFrom:           EmailFrom,
-		SendgridAPIKey:      SendgridAPIKey,
+		DBHost:               getEnvWithDefault("PURITY_DB_HOST", "localhost"),
+		DBPort:               getEnvWithDefault("PURITY_DB_PORT", "5432"),
+		DBName:               getEnvWithDefault("PURITY_DB_NAME", "purity"),
+		DBUser:               getEnvWithDefault("PURITY_DB_USER", "postgres"),
+		DBPassword:           getEnvWithDefault("PURITY_DB_PASS", ""),
+		DBSSLMode:            getEnvWithDefault("PURITY_DB_SSL_MODE", "disable"),
+		LogLevel:             getEnvWithDefault("PURITY_LOG_LEVEL", strconv.Itoa(int(zerolog.InfoLevel))),
+		StripeKey:            StripeKey,
+		StripeWebhookSecret:  StripeWebhookSecret,
+		EmailName:            EmailName,
+		EmailFrom:            EmailFrom,
+		SendgridAPIKey:       SendgridAPIKey,
+		TrialLicenseMaxUsage: 1000,
 	}, nil
 }
 

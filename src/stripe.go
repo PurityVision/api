@@ -10,7 +10,7 @@ import (
 
 func IncrementSubscriptionMeter(stripeKey string, lic *License, quantity int64) error {
 	if stripeKey == "" {
-		return errors.New("STRIPE_KEY env var not found")
+		return errors.New("stripeKey is empty")
 	}
 
 	stripe.Key = stripeKey
@@ -33,7 +33,7 @@ func IncrementSubscriptionMeter(stripeKey string, lic *License, quantity int64) 
 
 func fetchStripeSubscription(stripeKey string, lic *License) (*stripe.Subscription, error) {
 	if stripeKey == "" {
-		return nil, errors.New("STRIPE_KEY env var not found")
+		return nil, errors.New("stripeKey is empty")
 	}
 
 	stripe.Key = stripeKey
